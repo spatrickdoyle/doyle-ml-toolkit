@@ -2,12 +2,14 @@
 #Written by Sean Doyle in 2017 as part of research at Southern Methodist University
 
 from abc import ABCMeta, abstractmethod
+from scipy.special import erf
+import numpy as np
+import math
 
 #Abstract distribution class
 class Distribution:
     __metaclass__ = ABCMeta
 
-    @abstractmethod
     def __init__(self, y, C, weights):
         #list y[]: corresponding list of classifications
         #list C[dimension][row][order]: nested list of coefficients to use to train the function
@@ -30,16 +32,23 @@ class Distribution:
         #Make list of lists of mean feature values for each order feature corresponding to the classifications
         #and list of lists of the variance values for each order's distribution corresponding to classifications
         #Both empty is continuous
-        self.means = [[[] for j in C[0][0]] for i in self.classifications]#self.means[classification][order]
-        self.variances = [[0 for j in C[0][0]] for i in self.classifications]#self.variances[classification][order]
+        self.means = []
+        self.variances = []
         if self.discrete:
-            for row in range(len(y)):
-                for n in range(len(C[0][0])):
-                    self.means[self.classifications.index(y[row])][n].append(C[row][n])
-            for classification in range(len(self.means)):
-                for n in range(len(C[0][0])):
-                    self.variances[classification][n] = (sum([i**2 for i in self.means[classification][n]])/len(self.means[classification][n])) + (sum(self.means[classification][n])/len(self.means[classification][n]))**2
-                    self.means[classification][n] = sum(self.means[classification][n])/len(self.means[classification][n])
+            #self.means[dimension][classification][order]
+            self.means = [[[[] for j in C[0][0]] for i in self.classifications] for k in C]
+            #self.variances[dimension][classification][order]
+            self.variances = [[[0 for j in C[0][0]] for i in self.classifications] for k in C]
+
+            for d in range(len(C)):
+                for row in range(len(y)):
+                    for n in range(len(C[0][0])):
+                        self.means[d][self.classifications.index(y[row])][n].append(np.real(C[d][row][n]))
+            for d in range(len(C)):
+                for classification in range(len(self.means[0])):
+                    for n in range(len(C[0][0])):
+                        self.variances[d][classification][n] = (sum([i**2 for i in self.means[d][classification][n]])/len(self.means[d][classification][n])) + (sum(self.means[d][classification][n])/len(self.means[d][classification][n]))**2
+                        self.means[d][classification][n] = sum(self.means[d][classification][n])/len(self.means[d][classification][n])
         else:
             #For a discrete distribution each one can be checked individually, but for
             #a continous one we gotta regress those values
@@ -47,6 +56,9 @@ class Distribution:
             self.thetaM = []
             self.thetaL = []
             self.thetaR = []
+
+        #Measurement uncertainty
+        self.epsilon = 0.5
 
     @abstractmethod
     def mostLikely(self, c):
@@ -142,8 +154,67 @@ class Distribution:
 
 #Discrete classification, assumes that the distribution of points is Gaussian, and
 #evaluates each order of feature separately and just averages them without weights
+#Data must be single-dimensional for now
 class UnweightedGaussianClassification(Distribution):
-    def __init__(self, y, C):
-        for c in y:
-            if c not in self.classifications:
-                self.classifications.append(c)
+    def mostLikely(self, c):
+        #list c[]: list of coefficients representing the sweep to classify
+        #returns a tuple, the most likely classification and its likelihood
+
+        #If not discrete, throw and error
+        if len(self.means) == 0:
+            print "Data needs to be discrete classification!"
+            raise ValueError
+
+        probs = []#probs[classification][order]
+
+        for cls in range(len(self.means[0])):
+            probs.append([])
+            #For each order coefficient in c
+            for n in range(len(c)):
+                #Figure out the likelihood of the given coefficient falling in the distribution of this class
+                prb = 0.25*( erf(((np.real(c[n])+self.epsilon)-self.means[0][cls][n])/(self.variances[0][cls][n]*math.sqrt(2.0))) - erf(((np.real(c[n])-self.epsilon)-self.means[0][cls][n])/(self.variances[0][cls][n]*math.sqrt(2.0))) )
+
+                #Add it to the list
+                probs[-1].append(prb)
+
+        #Use the given method to calculate the total normed likelihood
+        probs = [sum(i)/len(i) for i in probs]
+
+        #Return the tuple
+        mx = max(probs)
+        return (self.classifications[probs.index(mx)],mx)
+
+    def checkY(self, y, c):
+        #y: classification to check (could be number or string depending on the data)
+        #list c[]: list of coefficients representing the sweep to classify
+        #returns the likelihood of the sweep represented by c being classified as y
+
+        #If this is classification, not regression, make sure y is in self.classifications
+        #If it isn't just return 0
+
+        #Otherwise, figure out the total normed likelihood of that classification
+        #This will be different for classification vs regression
+
+        #Return it
+
+        pass
+
+    def genData(self, classification, n):
+        #classification: the classification the generated data should fall into - data type may vary
+        #int n: the number of data points to generate
+        #returns a list of floats, a new data set conforming to this distribution
+
+        #If this is classification, not regression, make sure classification is in self.classifications
+        #If it isn't just return 0
+
+        #If this is classification, pull the mean and variance values directly for EACH order
+        #If regression, pull the function coefficients and evaluate the function inverse to get the values
+
+        #For each order, use numpy to generate a new value coefficient
+
+        #Using that list of coefficients, generate an approximation
+        #Evaluate it at points 0-n
+
+        #Return that list
+
+        pass

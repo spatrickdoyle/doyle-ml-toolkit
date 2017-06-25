@@ -31,7 +31,7 @@ class Token:
         baseString = dataString+":"+methodString+":"
         self.string = baseString+str(order)
 
-        #This is a multidimensional array:
+        #This is a multidimensional array: (self.weights[dimension][row][order])
         self.weights = []
         #Here's what it's for: if cost is true, each time an approximation is done, each time a coefficient
         #is generated, it uses costFunction to figure out how much the accuracy of the approximation
@@ -168,8 +168,15 @@ class Token:
         for row in sorted_rows:
             y.append(self.y[row])
 
+        #Create a new list of lists of weights at the indices given by rows
+        w = []
+        for dimension in range(len(self.weights)):
+            w.append([])
+            for row in sorted_rows:
+                w[dimension].append(self.weights[dimension][row])
+
         #Pass these lists to the Subtoken constructor
-        new_subtoken = Subtoken(y,coefs)
+        new_subtoken = Subtoken(y,coefs,w)
 
         #Return the new Subtoken
         return new_subtoken
@@ -257,12 +264,14 @@ class Token:
 
 #A Subtoken does all the same things as a token, but is spawned by other Tokens and doesn't have a file
 class Subtoken(Token):
-    def __init__(self, y, C):
+    def __init__(self, y, C, w):
         #list y[]: list of known classifications
-        #list C[][]: set of lists of coefficients
+        #list C[][][]: set of lists of coefficients
+        #list w[][][]: set of lists of weights
 
         self.y = y
         self.coefficients = C
+        self.weights = w
 
 
 #Orthogonal Decomposition Feature Classification
@@ -341,7 +350,7 @@ class ODFC:
             #Split the passed Token into usable and excluded data
             rows = [i for i in range(len(data.getAllY())) if i not in exclude]
             the_token = data.genSubtoken(rows)
-            exclusion_token = the_token
+            exclusion_token = data.genSubtoken(exclude)
         else:
             the_token = data
             exclusion_token = None
@@ -360,14 +369,16 @@ class ODFC:
 
         #For each set of data in the Token...
         #If prediction is empty,
-        #self.L.mostLikely(<something>)
+        ret = []
+        if len(prediction) == 0:
+            for row in range(len(data.getAllCoefficients()[0])):
+                ret.append(self.L.mostLikely(data.getBySweep(row)))
 
         #If prediction is passed, then for each prediction
         #self.L.checkY(<something>)
 
         #Return the constructed list
-
-        pass
+        return ret
 
     def test(self, data):
         #Token data: Token of data to test, must already contain classifications
