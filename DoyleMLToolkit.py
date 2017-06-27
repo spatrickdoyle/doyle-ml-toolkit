@@ -168,6 +168,13 @@ class Token:
         for row in sorted_rows:
             y.append(self.y[row])
 
+        #Create a new list of lists of data at the indices given by rows
+        X = []
+        for dimension in range(len(self.X)):
+            X.append([])
+            for row in sorted_rows:
+                X[dimension].append(self.X[dimension][row])
+
         #Create a new list of lists of weights at the indices given by rows
         w = []
         for dimension in range(len(self.weights)):
@@ -176,7 +183,7 @@ class Token:
                 w[dimension].append(self.weights[dimension][row])
 
         #Pass these lists to the Subtoken constructor
-        new_subtoken = Subtoken(y,coefs,w)
+        new_subtoken = Subtoken(y,X,coefs,w)
 
         #Return the new Subtoken
         return new_subtoken
@@ -264,12 +271,14 @@ class Token:
 
 #A Subtoken does all the same things as a token, but is spawned by other Tokens and doesn't have a file
 class Subtoken(Token):
-    def __init__(self, y, C, w):
+    def __init__(self, y, X, C, w=[]):
         #list y[]: list of known classifications
+        #list X[][][]: original data
         #list C[][][]: set of lists of coefficients
-        #list w[][][]: set of lists of weights
+        #list w[][][]: set of lists of weights (may be empty)
 
         self.y = y
+        self.X = X
         self.coefficients = C
         self.weights = w
 
@@ -357,6 +366,7 @@ class ODFC:
 
         #Use the data token to instantiate the appropriate distribution
         self.L = self.dist(the_token.getAllY(),the_token.getAllCoefficients(),the_token.getAllWeights())
+        self.domain = len(the_token.getAllData()[0][0])
 
         #Return the exclusion token (might be None)
         return exclusion_token
@@ -373,9 +383,10 @@ class ODFC:
         if len(prediction) == 0:
             for row in range(len(data.getAllCoefficients()[0])):
                 ret.append(self.L.mostLikely(data.getBySweep(row)))
-
-        #If prediction is passed, then for each prediction
-        #self.L.checkY(<something>)
+        else:
+            #If prediction is passed, then for each prediction
+            for row in range(len(data.getAllCoefficients()[0])):
+                ret.append((prediction[row],self.L.checkY(prediction[row],data.getBySweep(row))))
 
         #Return the constructed list
         return ret
@@ -384,19 +395,20 @@ class ODFC:
         #Token data: Token of data to test, must already contain classifications
         #returns an integer, the rate of correct identification
 
+        ret = []
         #For each set of data in the Token
-        #Check the likelihood that it is the classification stored in it
-
-        #Average each likelihood
+        for row in range(len(data.getAllY())):
+            #Check the likelihood that it is the classification stored in it
+            ret.append(self.L.checkY(data.getAllY()[row],data.getBySweep(row)))
 
         #Return the average
-
-        pass
+        return sum(ret)/len(ret)
 
     def genData(self, classification, n):
         #This is a public interface for the encapsulated distribution's genData method
 
-        return self.L.genData(classification,n)
+        return self.L.genData(classification,n,self.domain)
+
 
     #These functions are for making plots and such
     def plotSample(self, data, row, color, dimension=0):
@@ -418,7 +430,7 @@ class ODFC:
 
         theData = data.getAllData()
         theCoefficients = data.getBySweep(row,dimension)
-        x = [i for i in range(len(theData[dimension][row]))]
+        x = [i for i in range(len(theData[dimension][0]))]
         y = [self.C.evalH(theCoefficients,len(x),i) for i in x]
         #print y[:11]
         plt.plot(x,y,color)
