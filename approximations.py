@@ -47,7 +47,7 @@ class ComplexFourier(Approximation):
 
         #Calculate and return the coefficient - bearing in mind the formula for the 0th is different
         if n == 0:
-            return 2*(1.0/(2.0*T))*sum([(X[j]-X[j-1])*((j-1)-j)+X[j] for j in range(1,m)])
+            return (1.0/(2.0*T))*sum([X[j]+X[j-1] for j in range(1,m)])
         else:
             return -(1/(1j*n*w*T))*sum([((X[l]-X[l-1])/((l+1)-l))*((l+1)*(E**(-1j*n*w*(l+1))) - l*(E**(-1j*n*w*l))) + (E**(-1j*n*w*(l+1)) - E**(-1j*n*w*l))*(X[l]-((X[l]-X[l-1])/((l+1)-l))*(l+1)+(1/(1j*n*w))*((X[l]-X[l-1])/((l+1)-l))) for l in range(1,m)])
 
