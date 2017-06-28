@@ -57,4 +57,4 @@ class ComplexFourier(Approximation):
         order = len(C)-1
 
         #Evaluate the approximation at x
-        return sum([(np.real(C[n])-np.imag(C[n]))*E**(1j*(-n)*w*(x+1)) for n in range(1,order+1)])+sum([C[n]*E**(1j*n*w*(x+1)) for n in range(1,order+1)])+C[0]
+        return sum([(np.real(C[n]) - np.imag(C[n])*1j)*E**(1j*(-n)*w*(x+1)) for n in range(1,order+1)])+sum([C[n]*E**(1j*n*w*(x+1)) for n in range(1,order+1)])+C[0]

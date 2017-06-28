@@ -431,8 +431,7 @@ class ODFC:
         theData = data.getAllData()
         theCoefficients = data.getBySweep(row,dimension)
         x = [i for i in range(len(theData[dimension][0]))]
-        y = [self.C.evalH(theCoefficients,len(x),i) for i in x]
-        #print y[:11]
+        y = [self.C.evalH(theCoefficients,len(theData[0][0]),i) for i in x]
         plt.plot(x,y,color)
 
     def plotDistributionByOrder(self, n, dimension=0):
