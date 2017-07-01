@@ -2,6 +2,7 @@
 #Written by Sean Doyle in 2017 as part of research at Southern Methodist University
 
 import matplotlib.pyplot as plt
+import matplotlib.colors as colors
 import numpy as np
 import hashlib
 import glob,os
@@ -319,17 +320,22 @@ class ODFC:
             yMat = []
             XMat = [[] for i in range(dimMax)]
 
-            #Assume the data in X is floats and record it into a matrix
+            #Assume the data in X is floats/complex and record it into a matrix
             for row in dataLines:
                 if len(row) > 1:
                     dim = 0
                     for d in range(dimMax):
                         XMat[d].append([])
+                    #if len(row)-1 == row.count(','):
+                    #    continue
                     for value in row.split(','):
                         if value == "":
                             dim += 1
                         else:
-                            XMat[dim][-1].append(float(value))
+                            try:
+                                XMat[dim][-1].append(float(value))
+                            except ValueError:
+                                XMat[dim][-1].append(complex(value))
 
             #y could potentially be extended to any data type, but for now assume floats unless the
             #elements are surrounded by quotes
@@ -419,7 +425,7 @@ class ODFC:
         #Plots the data with matplotlib, but plt.show() still needs to be run to display it
 
         theData = data.getAllData()
-        plt.plot(range(len(theData[dimension][row])),theData[dimension][row],color)
+        plt.plot(range(len(theData[dimension][row])),[np.real(i) for i in theData[dimension][row]],color)
 
     def plotApproximation(self, data, row, color, dimension=0):
         #Token data: Token storing the approximation to plot
@@ -430,7 +436,7 @@ class ODFC:
 
         theData = data.getAllData()
         theCoefficients = data.getBySweep(row,dimension)
-        x = [i for i in range(len(theData[dimension][0]))]
+        x = [i/5.0 for i in range(5*(len(theData[dimension][0])-1))]
         y = [self.C.evalH(theCoefficients,len(theData[0][0]),i) for i in x]
         plt.plot(x,y,color)
 
@@ -453,9 +459,43 @@ class ODFC:
             mC = self.L.getMeanVal(n,dimension)
             vC = self.L.getVarianceVal(n,dimension)
 
-    def plotDistributionByClassification(self, c, dimension=0):
+    def plotDistributionByClassification(self, c, color, dimension=0):
         #int c: the classification to show the distribution for
         #int dimension: the data set to pull from
         #Plots the distribution with matplotlib, but plt.show() still needs to be run to display it
 
-        pass
+        if c not in self.L.classifications:
+            print "%s is not a valid classifications..."%c
+            raise ValueError
+
+        theCoefficients = self.L.means[dimension][self.L.classifications.index(c)]
+        x = [i/5.0 for i in range(5*100)]
+        y = [self.C.evalH(theCoefficients,101,i) for i in x]
+        plt.plot(x,y,color)
+
+
+        new_color = colors.rgb_to_hsv(colors.hex2color(color))
+        new_color[1] *= 0.67
+
+        theCoefficientsL = [theCoefficients[i]+np.sqrt(self.L.variances[dimension][self.L.classifications.index(c)][i]) for i in range(len(theCoefficients))]
+        x = [i/5.0 for i in range(5*100)]
+        y = [self.C.evalH(theCoefficientsL,101,i) for i in x]
+        plt.plot(x,y,color=colors.hsv_to_rgb(new_color))
+
+        theCoefficientsR = [theCoefficients[i]-np.sqrt(self.L.variances[dimension][self.L.classifications.index(c)][i]) for i in range(len(theCoefficients))]
+        x = [i/5.0 for i in range(5*100)]
+        y = [self.C.evalH(theCoefficientsR,101,i) for i in x]
+        plt.plot(x,y,color=colors.hsv_to_rgb(new_color))
+
+
+        new_color[1] *= 0.5
+
+        theCoefficientsL = [theCoefficients[i] + 2*np.sqrt(self.L.variances[dimension][self.L.classifications.index(c)][i]) for i in range(len(theCoefficients))]
+        x = [i/5.0 for i in range(5*100)]
+        y = [self.C.evalH(theCoefficientsL,101,i) for i in x]
+        plt.plot(x,y,color=colors.hsv_to_rgb(new_color))
+
+        theCoefficientsR = [theCoefficients[i] - 2*np.sqrt(self.L.variances[dimension][self.L.classifications.index(c)][i]) for i in range(len(theCoefficients))]
+        x = [i/5.0 for i in range(5*100)]
+        y = [self.C.evalH(theCoefficientsR,101,i) for i in x]
+        plt.plot(x,y,color=colors.hsv_to_rgb(new_color))

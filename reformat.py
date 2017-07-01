@@ -58,4 +58,25 @@ def uterusData():
         conDst.close()
 
 
-uterusData()
+def waterData(path):
+    outpt = file("water_test_data/node1.csv","a")
+
+    final = []
+    for trial in range(1,11):
+        current_file = file(path%(trial,"cap"),"r")
+        this_row = [float(i) for i in current_file.readline().split(',')]
+        current_file.close()
+
+        current_file = file(path%(trial,"con"),"r")
+        this_line = current_file.readline().split(',')
+        for val in range(len(this_line)):
+            this_row[val] += 1j*float(this_line[val])
+
+        final.append(this_row)
+
+    for line in final:
+        outpt.write(','.join([str(i) for i in line])+"\n")
+
+    outpt.close()
+
+waterData("water_test_data/NaCl-50/NaCl_50%d%s.csv")

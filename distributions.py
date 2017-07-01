@@ -6,7 +6,6 @@ from DoyleMLToolkit import Subtoken
 from abc import ABCMeta, abstractmethod
 from scipy.special import erf
 import numpy as np
-import math
 
 #Abstract distribution class
 class Distribution:
@@ -131,7 +130,7 @@ class Distribution:
 
 #Discrete classification, assumes that the distribution of points is Gaussian, and
 #evaluates each order of feature separately and just averages them without weights
-#Data must be single-dimensional for now
+#Data must be single-dimensional for now, but can be complex
 #Also uses POPULATION VARIANCE, rather than sample variance
 class UnweightedGaussianClassification(Distribution):
     def __init__(self, y, C, weights):
@@ -169,12 +168,12 @@ class UnweightedGaussianClassification(Distribution):
             for d in range(len(C)):
                 for row in range(len(y)):
                     for n in range(len(C[0][0])):
-                        self.samples[d][self.classifications.index(y[row])][n].append(np.real(C[d][row][n]))
+                        self.samples[d][self.classifications.index(y[row])][n].append(C[d][row][n])
             for d in range(len(C)):
                 for classification in range(len(self.samples[0])):
                     for n in range(len(C[0][0])):
                         self.means[d][classification][n] = sum(self.samples[d][classification][n])/len(self.samples[d][classification][n])
-                        self.variances[d][classification][n] = sum([(i-self.means[d][classification][n])**2 for i in self.samples[d][classification][n]])/len(self.samples[d][classification][n])
+                        self.variances[d][classification][n] = sum([(np.real(i-self.means[d][classification][n])**2) + (np.imag(i-self.means[d][classification][n])**2)*1j for i in self.samples[d][classification][n]])/len(self.samples[d][classification][n])
         else:
             #For a discrete distribution each one can be checked individually, but for
             #a continous one we gotta regress those values
@@ -182,9 +181,8 @@ class UnweightedGaussianClassification(Distribution):
             self.thetaM = []
             self.thetaL = []
             self.thetaR = []
-
-        #Measurement uncertainty
-        self.epsilon = 0.05
+        #print self.means[0][0][:3]
+        #print [math.sqrt(self.variances[0][0][i]) for i in range(3)]
 
     def mostLikely(self, c):
         #list c[]: list of coefficients representing the sweep to classify
@@ -202,10 +200,13 @@ class UnweightedGaussianClassification(Distribution):
             #For each order coefficient in c
             for n in range(len(c)):
                 #Figure out the likelihood of the given coefficient falling in the distribution of this class
-                prb = (np.e**((-(np.real(c[n])-self.means[0][cls][n])**2)/(2.0*self.variances[0][cls][n])))/math.sqrt(2.0*np.pi*self.variances[0][cls][n])
+                prbreal = (np.e**(-(np.real(c[n]-self.means[0][cls][n])**2)/(2.0*np.real(self.variances[0][cls][n]))))/np.sqrt(2.0*np.pi*np.real(self.variances[0][cls][n]))
+                prbimag = (np.e**(-(np.imag(c[n]-self.means[0][cls][n])**2)/(2.0*np.imag(self.variances[0][cls][n]))))/np.sqrt(2.0*np.pi*np.imag(self.variances[0][cls][n]))
+                if np.isnan(prbimag):
+                    prbimag = 1
 
                 #Add it to the list
-                probs[-1].append(prb)
+                probs[-1].append(prbreal*prbimag)
 
         #Use the given method to calculate the total normed likelihood
         probs = [sum(i)/len(i) for i in probs]
@@ -233,10 +234,13 @@ class UnweightedGaussianClassification(Distribution):
             #For each order coefficient in c
             for n in range(len(c)):
                 #Figure out the likelihood of the given coefficient falling in the distribution of this class
-                prb = (np.e**((-(np.real(c[n])-self.means[0][cls][n])**2)/(2.0*self.variances[0][cls][n])))/math.sqrt(2.0*np.pi*self.variances[0][cls][n])
+                prbreal = (np.e**(-(np.real(c[n]-self.means[0][cls][n])**2)/(2.0*np.real(self.variances[0][cls][n]))))/np.sqrt(2.0*np.pi*np.real(self.variances[0][cls][n]))
+                prbimag = (np.e**(-(np.imag(c[n]-self.means[0][cls][n])**2)/(2.0*np.imag(self.variances[0][cls][n]))))/np.sqrt(2.0*np.pi*np.imag(self.variances[0][cls][n]))
+                if np.isnan(prbimag):
+                    prbimag = 1
 
                 #Add it to the list
-                probs[-1].append(prb)
+                probs[-1].append(prbreal*prbimag)
 
         #Use the given method to calculate the total normed likelihood
         probs = [sum(i)/len(i) for i in probs]
@@ -258,7 +262,7 @@ class UnweightedGaussianClassification(Distribution):
         newCoefs = [[] for i in range(n)]
         #For each order, use numpy to generate a new value coefficient
         for order in range(len(self.means[0][0])):
-            new = np.random.normal(self.means[0][self.classifications.index(classification)][order],math.sqrt(self.variances[0][self.classifications.index(classification)][order]),n)
+            new = np.random.normal(self.means[0][self.classifications.index(classification)][order],np.sqrt(self.variances[0][self.classifications.index(classification)][order]),n)
             for i in range(len(new)):
                 newCoefs[i].append(new[i])
 
