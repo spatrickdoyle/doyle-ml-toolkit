@@ -126,7 +126,10 @@ class Token:
 
             for row in range(len(X[0])):
                 tmp = []
-                tmp.append(self.y[row])
+                if len(self.y) > 0:
+                    tmp.append(self.y[row])
+                else:
+                    tmp.append('')
                 tmp.append('')
                 for dimension in range(len(X)):
                     tmp += [str(i) for i in self.coefficients[dimension][row]]
@@ -300,19 +303,22 @@ class ODFC:
         self.L = None
 
     def load(self, y, X, cost=False, zeroth=False):
-        #list y[]: list of known classifications
+        #list y[]: list of known classifications, may be empty
         #list X[][][]: list of data sets
         #OR
-        #string y: path to .csv file with column list of known classifications
+        #string y: path to .csv file with column list of known classifications, may be empty
         #string X: path to .csv file with matrix of data
         #bool cost: if True, it will generate the Token with weights
         #bool zeroth: if True, generate the 0th order coefficient
         #returns Token containing the features of the given data
 
         #If they are files, not lists...
-        if (type(y) is str) and (type(X) is str):
+        if type(X) is str:
             #Open the files
-            classFile = file(y,'r')
+            if len(y) > 0:
+                classFile = file(y,'r')
+            else:
+                classFile = -1
             dataFile = file(X,'r')
 
             dataLines = dataFile.readlines()
@@ -337,17 +343,21 @@ class ODFC:
                             except ValueError:
                                 XMat[dim][-1].append(complex(value))
 
-            #y could potentially be extended to any data type, but for now assume floats unless the
-            #elements are surrounded by quotes
-            for value in classFile.readlines():
-                if len(value) > 0:
-                    #Is it a string?
-                    if (value[0:3] == '"""') and (value[-4:-1] == '"""'):
-                        yMat.append(value[3:-4])
-                    else:
-                        yMat.append(float(value))
+            #y can be empty for data that is going to be tested. If it is:
+            if classFile == -1:
+                yMat = []
+            else:
+                #y could potentially be extended to any data type, but for now assume floats unless the
+                #elements are surrounded by quotes
+                for value in classFile.readlines():
+                    if len(value) > 0:
+                        #Is it a string?
+                        if (value[0:3] == '"""') and (value[-4:-1] == '"""'):
+                            yMat.append(value[3:-4])
+                        else:
+                            yMat.append(float(value))
 
-            classFile.close()
+                classFile.close()
             dataFile.close()
         else:
             XMat = X
@@ -417,27 +427,41 @@ class ODFC:
 
 
     #These functions are for making plots and such
-    def plotSample(self, data, row, color, dimension=0):
+    def plotSample(self, data, row, color, imaginary=0, dimension=0):
         #Token data: Token storing the data to plot
         #int row: the data set to plot
         #string color: matplotlib color string, can be hex or just, like, 'red'
+        #bool imaginary: 0 is plot real part, 1 plot imaginary part
         #int dimension: the data set to pull from
         #Plots the data with matplotlib, but plt.show() still needs to be run to display it
 
         theData = data.getAllData()
-        plt.plot(range(len(theData[dimension][row])),[np.real(i) for i in theData[dimension][row]],color)
+        if imaginary:
+            plt.plot(range(len(theData[dimension][row])),[np.imag(i) for i in theData[dimension][row]],color)
+        else:
+            plt.plot(range(len(theData[dimension][row])),[np.real(i) for i in theData[dimension][row]],color)
 
-    def plotApproximation(self, data, row, color, dimension=0):
+    def plotApproximation(self, data, row, color, imaginary=0, dimension=0):
         #Token data: Token storing the approximation to plot
         #int row: the data set to plot
         #string color: matplotlib color string, can be hex or just like 'red'
+        #bool imaginary: 0 is plot real part, 1 plot imaginary part
         #int dimension: the data set to pull from
         #Plots the approximation with matplotlib, but plt.show() still needs to be run to display it
 
+        d = 1.0
         theData = data.getAllData()
         theCoefficients = data.getBySweep(row,dimension)
-        x = [i/5.0 for i in range(5*(len(theData[dimension][0])-1))]
-        y = [self.C.evalH(theCoefficients,len(theData[0][0]),i) for i in x]
+
+        #print theCoefficients[1:]
+        #print [self.C.getC(n,theData[dimension][row]) for n in range(1,len(theCoefficients))]
+        #print [self.C.getC(-n,theData[dimension][row]) for n in range(1,len(theCoefficients))]
+
+        x = [i/d for i in range(int(d)*(len(theData[dimension][0])-1))]
+        if imaginary:
+            y = [np.imag(self.C.evalH(theCoefficients,len(theData[0][0]),i,theData[dimension][row])) for i in x]
+        else:
+            y = [np.real(self.C.evalH(theCoefficients,len(theData[0][0]),i,theData[dimension][row])) for i in x]
         plt.plot(x,y,color)
 
     def plotDistributionByOrder(self, n, dimension=0):

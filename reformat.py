@@ -23,8 +23,8 @@ def newModel():
 
 
 def uterusData():
-    rSrc = file("uterus_other/Uterus_B1cap.csv",'r')
-    thetaSrc = file("uterus_other/Uterus_B1con.csv",'r')
+    rSrc = file("kidney/Kidney_CC1cap.csv",'r')
+    thetaSrc = file("kidney/Kidney_CC1con.csv",'r')
 
     r = [i.split(",") for i in rSrc.readlines()]
     theta = [i.split(",") for i in thetaSrc.readlines()]
@@ -39,20 +39,20 @@ def uterusData():
     #print f
 
     for i in range(len(r)):
-        tmpCap = []
-        tmpCon = []
-        for j in range(len(r[i])):
-            Z = float(r[i][j])*np.cos(np.radians(float(theta[i][j]))) + 1j*float(r[i][j])*np.sin(np.radians(float(theta[i][j])))
-            tmpCap.append(str(float(1/np.real(Z))))
-            tmpCon.append(str(1/(np.imag(Z)*2*3.1415926535*f[j])))
-        capacitance.append(tmpCap)
-        conductance.append(tmpCon)
+        #tmpCap = []
+        #tmpCon = []
+        #for j in range(len(r[i])):
+            #Z = float(r[i][j])*np.cos(np.radians(float(theta[i][j]))) + 1j*float(r[i][j])*np.sin(np.radians(float(theta[i][j])))
+            #tmpCap.append(str(float(1/np.real(Z))))
+            #tmpCon.append(str(1/(np.imag(Z)*2*3.1415926535*f[j])))
+        #capacitance.append(tmpCap)
+        #conductance.append(tmpCon)
 
-        capDst = file("uterus_other/Bcap%d.csv"%(i+1),'w')
-        conDst = file("uterus_other/Bcon%d.csv"%(i+1),'w')
+        capDst = file("kidney/CC1cap%d.csv"%(i+1),'w')
+        conDst = file("kidney/CC1con%d.csv"%(i+1),'w')
 
-        capDst.write(','.join(tmpCon))
-        conDst.write(','.join(tmpCap))
+        capDst.write(','.join(r[i]))
+        conDst.write(','.join(theta[i]))
 
         capDst.close()
         conDst.close()
@@ -79,4 +79,55 @@ def waterData(path):
 
     outpt.close()
 
-waterData("water_test_data/NaCl-50/NaCl_50%d%s.csv")
+def cancerData(path):
+    outpt = file("kidney/KidneyCC1.csv","w")
+
+    f = np.logspace(4,8,401)
+
+    #r
+    current_file = file(path%("cap"),"r")
+    Rs = [[float(i) for i in j.split(',')] for j in current_file.readlines()]
+    current_file.close()
+
+    #theta
+    current_file = file(path%("con"),"r")
+    lines = current_file.readlines()
+    for line in range(len(lines)):
+        THETAs = lines[line].split(',')
+        for val in range(len(THETAs)):
+            Z = Rs[line][val]*np.cos(np.radians(float(THETAs[val]))) + 1j*Rs[line][val]*np.sin(np.radians(float(THETAs[val])))
+            Y = 1/Z
+
+            capacitance = np.imag(Y)/(2*np.pi*f[val])
+            conductance = np.real(Y)
+
+            Rs[line][val] = capacitance + 1j*conductance
+
+    for line in Rs:
+        outpt.write(','.join([str(i) for i in line])+"\n")
+
+    outpt.close()
+
+def UterusCOXNew(path):
+    outpt = file("uterus_other/BB1.csv","w")
+
+    current_file = file(path%("cap"),"r")
+    Rs = [[float(i) for i in j.split(',')] for j in current_file.readlines()]
+    current_file.close()
+
+    #theta
+    current_file = file(path%("con"),"r")
+    lines = current_file.readlines()
+    for line in range(len(lines)):
+        THETAs = lines[line].split(',')
+        for val in range(len(THETAs)):
+            Rs[line][val] += 1j*float(THETAs[val])
+
+    for line in Rs:
+        outpt.write(','.join([str(i) for i in line])+"\n")
+
+    outpt.close()
+
+#waterData("water_test_data/NaCl-50/NaCl_50%d%s.csv")
+cancerData("kidney/Kidney_CC1%s.csv")
+#UterusCOXNew("uterus_other/Uterus_BB1%s.csv")
