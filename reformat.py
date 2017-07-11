@@ -128,6 +128,25 @@ def UterusCOXNew(path):
 
     outpt.close()
 
+def soundData():
+    inName = "8JulySound/piano/E2-0%d.txt"
+    outName = "8JulySound/piano/E2.csv"
+
+    outpt = file(outName,"w")
+
+    for i in range(10):
+        tmp = []
+        inp = file(inName%i,"r")
+        for line in inp.readlines():
+            if line[0] == ";":
+                continue
+            tmp.append(line.split()[1])
+        inp.close()
+
+        outpt.write(','.join(tmp)+'\n')
+    outpt.close()
+
 #waterData("water_test_data/NaCl-50/NaCl_50%d%s.csv")
-cancerData("kidney/Kidney_CC1%s.csv")
+#cancerData("kidney/Kidney_CC1%s.csv")
 #UterusCOXNew("uterus_other/Uterus_BB1%s.csv")
+soundData()

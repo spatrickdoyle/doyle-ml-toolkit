@@ -51,11 +51,11 @@ class ComplexFourier(Approximation):
         else:
             return -(1/(1j*n*w*T))*sum([((X[l]-X[l-1])/((l+1)-l))*((l+1)*(E**(-1j*n*w*(l+1))) - l*(E**(-1j*n*w*l))) + (E**(-1j*n*w*(l+1)) - E**(-1j*n*w*l))*(X[l]-((X[l]-X[l-1])/((l+1)-l))*(l+1)+(1/(1j*n*w))*((X[l]-X[l-1])/((l+1)-l))) for l in range(1,m)])
 
-    def evalH(self, C, T, x, X):
+    def evalH(self, C, T, x, nC):
         #Use T to calculate omega
         w = (2*PI)/T
         order = len(C)-1
 
         #Evaluate the approximation at x
-        return sum([self.getC(-n,X)*E**(1j*(-n)*w*(x+1)) for n in range(1,order+1)])+sum([self.getC(n,X)*E**(1j*n*w*(x+1)) for n in range(1,order+1)])+C[0]
+        return sum([nC[n-1]*E**(1j*(-n)*w*(x+1)) for n in range(1,order+1)])+sum([C[n]*E**(1j*n*w*(x+1)) for n in range(1,order+1)])+C[0]
         #return sum([(np.real(C[n]) - np.imag(C[n])*1j)*E**(1j*(-n)*w*(x+1)) for n in range(1,order+1)])+sum([C[n]*E**(1j*n*w*(x+1)) for n in range(1,order+1)])+C[0]

@@ -1,0 +1,30 @@
+<?xml version="1.0" standalone="no" ?>
+<!DOCTYPE project PUBLIC "-//audacityproject-1.3.0//DTD//EN" "http://audacity.sourceforge.net/xml/audacityproject-1.3.0.dtd" >
+<project xmlns="http://audacity.sourceforge.net/xml/" projname="guitar1E2_data" version="1.3.0" audacityversion="2.1.3-alpha-Nov 22 2016" sel0="0.1195726300" sel1="0.1195726300" vpos="0" h="0.0000000000" zoom="5167.8188164924" rate="44100.0" snapto="off" selectionformat="hh:mm:ss + milliseconds" frequencyformat="Hz" bandwidthformat="octaves">
+	<tags/>
+	<wavetrack name="guitar1E2" channel="2" linked="0" mute="0" solo="0" height="150" minimized="0" isSelected="1" rate="44100" gain="1.0" pan="0.0">
+		<waveclip offset="0.00000000">
+			<sequence maxsamples="262144" sampleformat="262159" numsamples="427092">
+				<waveblock start="0">
+					<simpleblockfile filename="e0000790.au" len="257232" min="-0.247314" max="0.297546" rms="0.02552"/>
+				</waveblock>
+				<waveblock start="257232">
+					<simpleblockfile filename="e0000b05.au" len="169860" min="-0.005493" max="0.008209" rms="0.003009"/>
+				</waveblock>
+			</sequence>
+			<envelope numpoints="0"/>
+		</waveclip>
+	</wavetrack>
+	<labeltrack name="Label Track" numlabels="10" height="73" minimized="0" isSelected="1">
+		<label t="0.0115505997" t1="0.0115505997" title="1"/>
+		<label t="0.0233566867" t1="0.0233566867" title="2"/>
+		<label t="0.0354893138" t1="0.0354893138" title="3"/>
+		<label t="0.0479892985" t1="0.0479892985" title="4"/>
+		<label t="0.0595149542" t1="0.0595149542" title="5"/>
+		<label t="0.0715795521" t1="0.0715795521" title="6"/>
+		<label t="0.0836940381" t1="0.0836940381" title="7"/>
+		<label t="0.0956705761" t1="0.0956705761" title="8"/>
+		<label t="0.1076440905" t1="0.1076440905" title="9"/>
+		<label t="0.1195726300" t1="0.1195726300" title="10"/>
+	</labeltrack>
+</project>

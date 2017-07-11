@@ -181,8 +181,6 @@ class UnweightedGaussianClassification(Distribution):
             self.thetaM = []
             self.thetaL = []
             self.thetaR = []
-        #print self.means[0][0][:3]
-        #print [math.sqrt(self.variances[0][0][i]) for i in range(3)]
 
     def mostLikely(self, c):
         #list c[]: list of coefficients representing the sweep to classify

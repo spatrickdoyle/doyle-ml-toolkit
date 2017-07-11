@@ -1,5 +1,6 @@
 #API for experimenting with orthogonal decomposition feature classification
 #Written by Sean Doyle in 2017 as part of research at Southern Methodist University
+#The complete library can be found at www.github.com/spatrickdoyle/doyle-ml-toolkit
 
 import matplotlib.pyplot as plt
 import matplotlib.colors as colors
@@ -19,9 +20,11 @@ class Token:
         #bool cost: if true, keep track of the accuracy of the approximation being made
         #bool zeroth: if true, generate the 0th order coefficient
 
-        self.size = len(X)
-        self.length = len(X[0][0])
+        self.dimension = len(X) #Dimension of data
+        self.size = len(X[0]) #Number of rows
+        self.length = len(X[0][0]) #Length of each row
         self.coefficients = []
+        self.neg_coefs = []#This is where negative coefficients up to -order are stored
         self.X = X
         self.y = y
         self.method = approximation
@@ -48,10 +51,10 @@ class Token:
                 #If it is, load the correct order coefficients from that file
                 tokenFile = file(TOKEN_PATH+biggestString+".csv","r")
 
-                self.coefficients = [[] for i in range(len(self.X))]
+                self.coefficients = [[] for i in range(self.dimension)]
                 for line in tokenFile.readlines():
                     thisRow = line.split(',')
-                    for i in range(len(self.X)):
+                    for i in range(self.dimension):
                         self.coefficients[i].append([])
                     for value in range(len(thisRow)):
                         if value == 0:
@@ -72,10 +75,10 @@ class Token:
                 #Load the existing file
                 tokenFile = file(TOKEN_PATH+biggestString+".csv","r")
 
-                self.coefficients = [[] for i in range(len(self.X))]
+                self.coefficients = [[] for i in range(self.dimension)]
                 for line in tokenFile.readlines():
                     thisRow = line.split(',')
-                    for i in range(len(self.X)):
+                    for i in range(self.dimension):
                         self.coefficients[i].append([])
                     for value in range(len(thisRow)):
                         if value == 0:
@@ -91,25 +94,25 @@ class Token:
                 tokenFile.close()
 
                 #Generate new coefficients
-                for dimension in range(len(X)):
-                    for row in range(len(X[dimension])):
+                for dimension in range(self.dimension):
+                    for row in range(self.size):
                         for n in range(orders[-1]+1,order+1):
                             self.coefficients[dimension][row].append(self.method.getC(n,X[dimension][row]))
 
                 newTokenFile = file(TOKEN_PATH+self.string+".csv","w")
 
-                for row in range(len(X[0])):
+                for row in range(self.size):
                     tmp = []
                     tmp.append(self.y[row])
                     tmp.append('')
-                    for dimension in range(len(X)):
+                    for dimension in range(self.dimension):
                         tmp += [str(i) for i in self.coefficients[dimension][row]]
                         tmp.append('')
                     newTokenFile.write(','.join(tmp)+'\n')
 
                 newTokenFile.close()
 
-                os.system("rm %s"%(TOKEN_PATH+biggestString+".csv"))
+                os.remove("%s"%(TOKEN_PATH+biggestString+".csv"))
         else:
             #If not, generate a new set of coefficients and write a new token file
             self.coefficients = [[] for i in range(len(self.X))]
@@ -138,6 +141,14 @@ class Token:
 
             tokenFile.close()
 
+        #For now, negative coefficients will be generated each time no matter what and never stored in a file
+        self.neg_coefs = [[] for i in range(len(self.X))]
+        for dimension in range(len(X)):
+            for row in range(len(X[dimension])):
+                self.neg_coefs[dimension].append([])
+                for n in range(1,order+1):
+                    self.neg_coefs[dimension][row].append(self.method.getC(-n,X[dimension][row]))
+
         #If cost is set, calculate the weights
         if cost:
             costs = []
@@ -154,6 +165,17 @@ class Token:
                             h = lambda x: self.method.evalH(self.coefficients[d][r][:n],len(self.X[d][r]),x)
                         costs[-1][-1].append(self.costFunction(h,self.X[d][r]))
                     self.weights[-1][-1] = [abs(costs[-1][-1][i]-costs[-1][-1][i+1])/abs(costs[-1][-1][0]-costs[-1][-1][-1]) for i in range(len(costs[-1][-1])-1)]
+
+    def __add__(self,other):
+        #Token other: the token being added to the current one, must have same dimension
+        #retuns a new Subtoken, consisting of the data from other appended to the data from self
+
+        #Throw an error if they aren't the same dimension
+        if other.dimension != self.dimension:
+            print "Added Tokens must be the same dimension!"
+            raise TypeError
+
+        return Subtoken(self.y+other.y,[self.X[d]+other.X[d] for d in range(self.dimension)],[self.coefficients[d]+other.coefficients[d] for d in range(self.dimension)],[self.weights[d]+other.weights[d] for d in range(len(self.weights))])
 
     def genSubtoken(self, rows):
         #list rows[]: list of ints, the rows of coefficients to put in the subtoken
@@ -286,6 +308,10 @@ class Subtoken(Token):
         self.coefficients = C
         self.weights = w
 
+        self.dimension = len(self.X)
+        self.size = len(self.X[0])
+        self.length = len(self.X[0][0])
+
 
 #Orthogonal Decomposition Feature Classification
 class ODFC:
@@ -350,7 +376,7 @@ class ODFC:
                 #y could potentially be extended to any data type, but for now assume floats unless the
                 #elements are surrounded by quotes
                 for value in classFile.readlines():
-                    if len(value) > 0:
+                    if (len(value) > 0) and (value != "\n"):
                         #Is it a string?
                         if (value[0:3] == '"""') and (value[-4:-1] == '"""'):
                             yMat.append(value[3:-4])
@@ -373,7 +399,7 @@ class ODFC:
 
         if len(exclude) > 0:
             #Split the passed Token into usable and excluded data
-            rows = [i for i in range(len(data.getAllY())) if i not in exclude]
+            rows = [i for i in range(data.size) if i not in exclude]
             the_token = data.genSubtoken(rows)
             exclusion_token = data.genSubtoken(exclude)
         else:
@@ -411,11 +437,18 @@ class ODFC:
         #Token data: Token of data to test, must already contain classifications
         #returns an integer, the rate of correct identification
 
+        if (len(data.getAllY()) != len(data.getAllData()[0])) or (data.getAllY().count("") != 0):
+            print "Token must contain classifications"
+            raise ValueError
+
         ret = []
         #For each set of data in the Token
         for row in range(len(data.getAllY())):
-            #Check the likelihood that it is the classification stored in it
-            ret.append(self.L.checkY(data.getAllY()[row],data.getBySweep(row)))
+            #Retrain the model without the current row
+            thisRow = self.train(data,[row])
+
+            #Record the likelihood that the current row belongs to the known classification
+            ret.append(self.predict(thisRow,thisRow.getAllY())[0][1])
 
         #Return the average
         return sum(ret)/len(ret)
@@ -444,7 +477,7 @@ class ODFC:
     def plotApproximation(self, data, row, color, imaginary=0, dimension=0):
         #Token data: Token storing the approximation to plot
         #int row: the data set to plot
-        #string color: matplotlib color string, can be hex or just like 'red'
+        #string color: matplotlib color string, can be hex or just, like, 'red'
         #bool imaginary: 0 is plot real part, 1 plot imaginary part
         #int dimension: the data set to pull from
         #Plots the approximation with matplotlib, but plt.show() still needs to be run to display it
@@ -459,9 +492,9 @@ class ODFC:
 
         x = [i/d for i in range(int(d)*(len(theData[dimension][0])-1))]
         if imaginary:
-            y = [np.imag(self.C.evalH(theCoefficients,len(theData[0][0]),i,theData[dimension][row])) for i in x]
+            y = [np.imag(self.C.evalH(theCoefficients,len(theData[0][0]),i,data.neg_coefs[dimension][row])) for i in x]
         else:
-            y = [np.real(self.C.evalH(theCoefficients,len(theData[0][0]),i,theData[dimension][row])) for i in x]
+            y = [np.real(self.C.evalH(theCoefficients,len(theData[0][0]),i,data.neg_coefs[dimension][row])) for i in x]
         plt.plot(x,y,color)
 
     def plotDistributionByOrder(self, n, dimension=0):
@@ -485,6 +518,7 @@ class ODFC:
 
     def plotDistributionByClassification(self, c, color, dimension=0):
         #int c: the classification to show the distribution for
+        #string color: matplotlib color string
         #int dimension: the data set to pull from
         #Plots the distribution with matplotlib, but plt.show() still needs to be run to display it
 
