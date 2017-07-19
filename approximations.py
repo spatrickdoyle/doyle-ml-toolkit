@@ -21,6 +21,7 @@ class Approximation:
         #int n: the order of the coefficient to generate
         #list X[]: the data sweep being approximated
         #returns the nth order coefficient of the given decomposition of X
+        #OR it could return a tuple of two associated coefficients
 
         pass
 
@@ -49,13 +50,16 @@ class ComplexFourier(Approximation):
         if n == 0:
             return (1.0/(2.0*T))*sum([X[j]+X[j-1] for j in range(1,m)])
         else:
-            return -(1/(1j*n*w*T))*sum([((X[l]-X[l-1])/((l+1)-l))*((l+1)*(E**(-1j*n*w*(l+1))) - l*(E**(-1j*n*w*l))) + (E**(-1j*n*w*(l+1)) - E**(-1j*n*w*l))*(X[l]-((X[l]-X[l-1])/((l+1)-l))*(l+1)+(1/(1j*n*w))*((X[l]-X[l-1])/((l+1)-l))) for l in range(1,m)])
+            part1 = -(1/(1j*n*w*T))*sum([((X[l]-X[l-1])/((l+1)-l))*((l+1)*(E**(-1j*n*w*(l+1))) - l*(E**(-1j*n*w*l))) + (E**(-1j*n*w*(l+1)) - E**(-1j*n*w*l))*(X[l]-((X[l]-X[l-1])/((l+1)-l))*(l+1)+(1/(1j*n*w))*((X[l]-X[l-1])/((l+1)-l))) for l in range(1,m)])
+            n *= -1
+            part2 = -(1/(1j*n*w*T))*sum([((X[l]-X[l-1])/((l+1)-l))*((l+1)*(E**(-1j*n*w*(l+1))) - l*(E**(-1j*n*w*l))) + (E**(-1j*n*w*(l+1)) - E**(-1j*n*w*l))*(X[l]-((X[l]-X[l-1])/((l+1)-l))*(l+1)+(1/(1j*n*w))*((X[l]-X[l-1])/((l+1)-l))) for l in range(1,m)])
+            return (part1,part2)
 
-    def evalH(self, C, T, x, nC):
+    def evalH(self, C, T, x):
         #Use T to calculate omega
         w = (2*PI)/T
         order = len(C)-1
 
         #Evaluate the approximation at x
-        return sum([nC[n-1]*E**(1j*(-n)*w*(x+1)) for n in range(1,order+1)])+sum([C[n]*E**(1j*n*w*(x+1)) for n in range(1,order+1)])+C[0]
+        return sum([C[n][1]*E**(1j*(-n)*w*(x+1)) for n in range(1,order+1)])+sum([C[n][0]*E**(1j*n*w*(x+1)) for n in range(1,order+1)])+C[0]
         #return sum([(np.real(C[n]) - np.imag(C[n])*1j)*E**(1j*(-n)*w*(x+1)) for n in range(1,order+1)])+sum([C[n]*E**(1j*n*w*(x+1)) for n in range(1,order+1)])+C[0]

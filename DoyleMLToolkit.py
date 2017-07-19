@@ -12,34 +12,25 @@ TOKEN_PATH = "./decomps/"
 
 #Tokens are passed data and generate and contain all the decomposed features of that data for a given method
 class Token:
-    def __init__(self, y, X, approximation, order, cost=False, zeroth=False):
+    def __init__(self, y, X, approximation, order):
         #list y[]: list of known classifications, may be empty
         #list X[dimension][row][order]: list of data sets
         #Approximation approximation: the feature coefficient object to use
         #int order: the number of coefficients to generate and use
-        #bool cost: if true, keep track of the accuracy of the approximation being made
-        #bool zeroth: if true, generate the 0th order coefficient
 
         self.dimension = len(X) #Dimension of data
         self.size = len(X[0]) #Number of rows
         self.length = len(X[0][0]) #Length of each row
         self.coefficients = []
-        self.neg_coefs = []#This is where negative coefficients up to -order are stored
         self.X = X
         self.y = y
         self.method = approximation
 
         #Generate a token string using the data and metadata (different if different y)
         dataString = hashlib.md5(bytearray(str(y)+str(X))).hexdigest()
-        methodString = hashlib.md5(bytearray(self.method.name+str(zeroth))).hexdigest()
+        methodString = hashlib.md5(bytearray(self.method.name)).hexdigest()
         baseString = dataString+":"+methodString+":"
         self.string = baseString+str(order)
-
-        #This is a multidimensional array: (self.weights[dimension][row][order])
-        self.weights = []
-        #Here's what it's for: if cost is true, each time an approximation is done, each time a coefficient
-        #is generated, it uses costFunction to figure out how much the accuracy of the approximation
-        #increases with the given term. It then divides each term by the total to create the weights
 
         #Check if there is an existing token file of the same data and method
         existingTokens = glob.glob(TOKEN_PATH+"%s:%s:*.csv"%(dataString,methodString))
@@ -64,10 +55,23 @@ class Token:
                         else:
                             if thisRow[value] != '\n':
                                 if (value-2)%(orders[-1]+2) < order+1:
-                                    try:
-                                        self.coefficients[(value-2)/(orders[-1]+2)][-1].append(float(thisRow[value]))
-                                    except ValueError:
-                                        self.coefficients[(value-2)/(orders[-1]+2)][-1].append(complex(thisRow[value]))
+                                    thisValue = thisRow[value].split(" ")
+                                    if len(thisValue) > 1:
+                                        try:
+                                            first = float(thisValue[0])
+                                        except ValueError:
+                                            first = complex(thisValue[0])
+                                        try:
+                                            second = float(thisValue[1])
+                                        except ValueError:
+                                            second = complex(thisValue[1])
+                                        thisValue = (first,second)
+                                    else:
+                                        try:
+                                            thisValue = float(thisValue[0])
+                                        except ValueError:
+                                            thisValue = complex(thisValue[0])
+                                    self.coefficients[(value-2)/(orders[-1]+2)][-1].append(thisValue)
                 tokenFile.close()
             else:
                 #If not, load the partial file, generate the rest of the coefficients, and delete the old file
@@ -87,10 +91,23 @@ class Token:
                             continue
                         else:
                             if thisRow[value] != '\n':
-                                try:
-                                    self.coefficients[(value-2)/(orders[-1]+2)][-1].append(float(thisRow[value]))
-                                except ValueError:
-                                    self.coefficients[(value-2)/(orders[-1]+2)][-1].append(complex(thisRow[value]))
+                                thisValue = thisRow[value].split(" ")
+                                if len(thisValue) > 1:
+                                    try:
+                                        first = float(thisValue[0])
+                                    except ValueError:
+                                        first = complex(thisValue[0])
+                                    try:
+                                        second = float(thisValue[1])
+                                    except ValueError:
+                                        second = complex(thisValue[1])
+                                    thisValue = (first,second)
+                                else:
+                                    try:
+                                        thisValue = float(thisValue[0])
+                                    except ValueError:
+                                        thisValue = complex(thisValue[0])
+                                self.coefficients[(value-2)/(orders[-1]+2)][-1].append(thisValue)
                 tokenFile.close()
 
                 #Generate new coefficients
@@ -106,7 +123,13 @@ class Token:
                     tmp.append(self.y[row])
                     tmp.append('')
                     for dimension in range(self.dimension):
-                        tmp += [str(i) for i in self.coefficients[dimension][row]]
+                        tmp2 = []
+                        for i in self.coefficients[dimension][row]:
+                            if type(i) is tuple:
+                                tmp2.append(str(i[0])+" "+str(i[1]))
+                            else:
+                                tmp2.append(str(i))
+                        tmp += tmp2
                         tmp.append('')
                     newTokenFile.write(','.join(tmp)+'\n')
 
@@ -120,10 +143,7 @@ class Token:
                 for row in range(len(X[dimension])):
                     self.coefficients[dimension].append([])
                     for n in range(order+1):
-                        if (n == 0) and (zeroth == False):
-                            self.coefficients[dimension][row].append(0)
-                        else:
-                            self.coefficients[dimension][row].append(self.method.getC(n,X[dimension][row]))
+                        self.coefficients[dimension][row].append(self.method.getC(n,X[dimension][row]))
 
             tokenFile = file(TOKEN_PATH+self.string+".csv","w")
 
@@ -135,36 +155,17 @@ class Token:
                     tmp.append('')
                 tmp.append('')
                 for dimension in range(len(X)):
-                    tmp += [str(i) for i in self.coefficients[dimension][row]]
+                    tmp2 = []
+                    for i in self.coefficients[dimension][row]:
+                        if type(i) is tuple:
+                            tmp2.append(str(i[0])+" "+str(i[1]))
+                        else:
+                            tmp2.append(str(i))
+                    tmp += tmp2
                     tmp.append('')
                 tokenFile.write(','.join(tmp)+'\n')
 
             tokenFile.close()
-
-        #For now, negative coefficients will be generated each time no matter what and never stored in a file
-        self.neg_coefs = [[] for i in range(len(self.X))]
-        for dimension in range(len(X)):
-            for row in range(len(X[dimension])):
-                self.neg_coefs[dimension].append([])
-                for n in range(1,order+1):
-                    self.neg_coefs[dimension][row].append(self.method.getC(-n,X[dimension][row]))
-
-        #If cost is set, calculate the weights
-        if cost:
-            costs = []
-            for d in range(len(self.coefficients)):
-                costs.append([])
-                self.weights.append([])
-                for r in range(len(self.coefficients[d])):
-                    costs[-1].append([])
-                    self.weights[-1].append([])
-                    for n in range(len(self.coefficients[d][r])+1):
-                        if n == 0:
-                            h = lambda x: self.method.evalH([0],len(self.X[d][r]),x)
-                        else:
-                            h = lambda x: self.method.evalH(self.coefficients[d][r][:n],len(self.X[d][r]),x)
-                        costs[-1][-1].append(self.costFunction(h,self.X[d][r]))
-                    self.weights[-1][-1] = [abs(costs[-1][-1][i]-costs[-1][-1][i+1])/abs(costs[-1][-1][0]-costs[-1][-1][-1]) for i in range(len(costs[-1][-1])-1)]
 
     def __add__(self,other):
         #Token other: the token being added to the current one, must have same dimension
@@ -175,7 +176,7 @@ class Token:
             print "Added Tokens must be the same dimension!"
             raise TypeError
 
-        return Subtoken(self.y+other.y,[self.X[d]+other.X[d] for d in range(self.dimension)],[self.coefficients[d]+other.coefficients[d] for d in range(self.dimension)],[self.weights[d]+other.weights[d] for d in range(len(self.weights))])
+        return Subtoken(self.y+other.y,[self.X[d]+other.X[d] for d in range(self.dimension)],[self.coefficients[d]+other.coefficients[d] for d in range(self.dimension)])
 
     def genSubtoken(self, rows):
         #list rows[]: list of ints, the rows of coefficients to put in the subtoken
@@ -201,15 +202,8 @@ class Token:
             for row in sorted_rows:
                 X[dimension].append(self.X[dimension][row])
 
-        #Create a new list of lists of weights at the indices given by rows
-        w = []
-        for dimension in range(len(self.weights)):
-            w.append([])
-            for row in sorted_rows:
-                w[dimension].append(self.weights[dimension][row])
-
         #Pass these lists to the Subtoken constructor
-        new_subtoken = Subtoken(y,X,coefs,w)
+        new_subtoken = Subtoken(y,X,coefs)
 
         #Return the new Subtoken
         return new_subtoken
@@ -265,48 +259,17 @@ class Token:
         #Return it
         return x_copy
 
-    def getWeights(self, row, dimension=0):
-        #int row: the row to return weights for
-        #int dimension: the data set to pull from
-        #return the list of weights associated with row
-
-        #Make a copy
-        w_copy = self.weights[dimension][row][:]
-
-        #Return it
-        return w_copy
-
-    def getAllWeights(self):
-        #int row: the row to return weights for
-        #int dimension: the data set to pull from
-        #return the list of weights associated with row
-
-        #Make a copy
-        w_copy = self.weights[:]
-
-        #Return it
-        return w_copy
-
-    #This function is used internally
-    def costFunction(self, h, y):
-        #function h: the approximation to evaluate
-        #list y[]: the list of points to check against
-        #returns an int, the difference score
-
-        return 0.5*sum([(np.real(h(i))-y[i])**2 for i in range(len(y))])
 
 #A Subtoken does all the same things as a token, but is spawned by other Tokens and doesn't have a file
 class Subtoken(Token):
-    def __init__(self, y, X, C, w=[]):
+    def __init__(self, y, X, C):
         #list y[]: list of known classifications
         #list X[][][]: original data
         #list C[][][]: set of lists of coefficients
-        #list w[][][]: set of lists of weights (may be empty)
 
         self.y = y
         self.X = X
         self.coefficients = C
-        self.weights = w
 
         self.dimension = len(self.X)
         self.size = len(self.X[0])
@@ -315,11 +278,16 @@ class Subtoken(Token):
 
 #Orthogonal Decomposition Feature Classification
 class ODFC:
-    def __init__(self, approximation, selection, order, dimension=1):
+    def __init__(self, approximation, selection, order, cost, zeroth, dimension=1):
         #class approximation: the feature coefficient function to use
         #class selection: the likelihood function class to use
         #int order: the number of coefficients to generate and use
+        #bool cost: if True, it will use weights with distribution
+        #bool zeroth: whether the zeroth coefficient should be used to make classifications
         #int dimension: the number of vectors each data reading consists of
+
+        self.cost = cost
+        self.zeroth = zeroth
 
         self.C = approximation()
         self.dist = selection
@@ -328,14 +296,12 @@ class ODFC:
 
         self.L = None
 
-    def load(self, y, X, cost=False, zeroth=False):
+    def load(self, y, X):
         #list y[]: list of known classifications, may be empty
         #list X[][][]: list of data sets
         #OR
         #string y: path to .csv file with column list of known classifications, may be empty
         #string X: path to .csv file with matrix of data
-        #bool cost: if True, it will generate the Token with weights
-        #bool zeroth: if True, generate the 0th order coefficient
         #returns Token containing the features of the given data
 
         #If they are files, not lists...
@@ -390,7 +356,7 @@ class ODFC:
             yMat = y
 
         #Load and return the appropriate Token
-        return Token(yMat,XMat,self.C,self.O,cost,zeroth)
+        return Token(yMat,XMat,self.C,self.O)
 
     def train(self, data, exclude=[]):
         #Token data: Token of the data to use to train
@@ -406,8 +372,22 @@ class ODFC:
             the_token = data
             exclusion_token = None
 
+        #Calculate the average of the training data to pass to the distribution, if cost is set
+        averages = []
+        if self.cost:
+            classifications = list(set(data.getAllY()))
+            for dimension in range(data.dimension):
+                averages.append([])
+                for classification in classifications:
+                    averages[-1].append([])
+                    for row in range(data.size):
+                        if data.getAllY()[row] == classification:
+                            averages[-1][-1].append(data.getAllData()[dimension][row])
+                    tmp = [sum([i[j] for i in averages[-1][-1]])/len(averages[-1][-1]) for j in range(data.length)]
+                    averages[-1][-1] = tmp
+
         #Use the data token to instantiate the appropriate distribution
-        self.L = self.dist(the_token.getAllY(),the_token.getAllCoefficients(),the_token.getAllWeights())
+        self.L = self.dist(the_token.getAllY(),the_token.getAllCoefficients(),self.zeroth,averages,lambda C,x:self.C.evalH(C,data.length,x))
         self.domain = len(the_token.getAllData()[0][0])
 
         #Return the exclusion token (might be None)
@@ -483,19 +463,15 @@ class ODFC:
         #Plots the approximation with matplotlib, but plt.show() still needs to be run to display it
 
         d = 1.0
-        theData = data.getAllData()
         theCoefficients = data.getBySweep(row,dimension)
 
-        #print theCoefficients[1:]
-        #print [self.C.getC(n,theData[dimension][row]) for n in range(1,len(theCoefficients))]
-        #print [self.C.getC(-n,theData[dimension][row]) for n in range(1,len(theCoefficients))]
-
-        x = [i/d for i in range(int(d)*(len(theData[dimension][0])-1))]
+        x = [i/d for i in range(int(d*(data.length-1)))]
         if imaginary:
-            y = [np.imag(self.C.evalH(theCoefficients,len(theData[0][0]),i,data.neg_coefs[dimension][row])) for i in x]
+            y = [np.imag(self.C.evalH(theCoefficients,data.length,i)) for i in x]
         else:
-            y = [np.real(self.C.evalH(theCoefficients,len(theData[0][0]),i,data.neg_coefs[dimension][row])) for i in x]
+            y = [np.real(self.C.evalH(theCoefficients,data.length,i)) for i in x]
         plt.plot(x,y,color)
+        plt.show()
 
     def plotDistributionByOrder(self, n, dimension=0):
         #int n: the order of coefficient to show the distribution for
@@ -516,9 +492,11 @@ class ODFC:
             mC = self.L.getMeanVal(n,dimension)
             vC = self.L.getVarianceVal(n,dimension)
 
-    def plotDistributionByClassification(self, c, color, dimension=0):
+    def plotDistributionByClassification(self, c, color, domain, imaginary=0, dimension=0):
         #int c: the classification to show the distribution for
         #string color: matplotlib color string
+        #int domain: x-axis of plot will encompass 0-domain
+        #bool imaginary: whether the real or imaginary part should be plotted, for complex data
         #int dimension: the data set to pull from
         #Plots the distribution with matplotlib, but plt.show() still needs to be run to display it
 
@@ -526,34 +504,52 @@ class ODFC:
             print "%s is not a valid classifications..."%c
             raise ValueError
 
+        d = 1.0
         theCoefficients = self.L.means[dimension][self.L.classifications.index(c)]
-        x = [i/5.0 for i in range(5*100)]
-        y = [self.C.evalH(theCoefficients,101,i) for i in x]
+        theVariances = self.L.variances[dimension][self.L.classifications.index(c)]
+
+        x = [i/d for i in range(int(d*(domain-1)))]
+        if imaginary:
+            y = [np.imag(self.C.evalH(theCoefficients,domain,i)) for i in x]
+        else:
+            y = [np.real(self.C.evalH(theCoefficients,domain,i)) for i in x]
         plt.plot(x,y,color)
 
 
         new_color = colors.rgb_to_hsv(colors.hex2color(color))
         new_color[1] *= 0.67
 
-        theCoefficientsL = [theCoefficients[i]+np.sqrt(self.L.variances[dimension][self.L.classifications.index(c)][i]) for i in range(len(theCoefficients))]
-        x = [i/5.0 for i in range(5*100)]
-        y = [self.C.evalH(theCoefficientsL,101,i) for i in x]
+        theCoefficientsL = [theCoefficients[0]+np.sqrt(np.real(theVariances[0]))+1j*np.sqrt(np.imag(theVariances[0]))]+[(theCoefficients[i][0]+np.sqrt(np.real(theVariances[i][0]))+1j*np.sqrt(np.imag(theVariances[i][0])),theCoefficients[i][1]+np.sqrt(np.real(theVariances[i][1]))+1j*np.sqrt(np.imag(theVariances[i][1]))) for i in range(1,len(theCoefficients))]
+        x = [i/d for i in range(int(d*(domain-1)))]
+        if imaginary:
+            y = [np.imag(self.C.evalH(theCoefficientsL,domain,i)) for i in x]
+        else:
+            y = [np.real(self.C.evalH(theCoefficientsL,domain,i)) for i in x]
         plt.plot(x,y,color=colors.hsv_to_rgb(new_color))
 
-        theCoefficientsR = [theCoefficients[i]-np.sqrt(self.L.variances[dimension][self.L.classifications.index(c)][i]) for i in range(len(theCoefficients))]
-        x = [i/5.0 for i in range(5*100)]
-        y = [self.C.evalH(theCoefficientsR,101,i) for i in x]
+        theCoefficientsR = [theCoefficients[0]-np.sqrt(np.real(theVariances[0]))-1j*np.sqrt(np.imag(theVariances[0]))]+[(theCoefficients[i][0]-np.sqrt(np.real(theVariances[i][0]))-1j*np.sqrt(np.imag(theVariances[i][0])),theCoefficients[i][1]-np.sqrt(np.real(theVariances[i][1]))-1j*np.sqrt(np.imag(theVariances[i][1]))) for i in range(1,len(theCoefficients))]
+        x = [i/d for i in range(int(d*(domain-1)))]
+        if imaginary:
+            y = [np.imag(self.C.evalH(theCoefficientsR,domain,i)) for i in x]
+        else:
+            y = [np.real(self.C.evalH(theCoefficientsR,domain,i)) for i in x]
         plt.plot(x,y,color=colors.hsv_to_rgb(new_color))
 
 
         new_color[1] *= 0.5
 
-        theCoefficientsL = [theCoefficients[i] + 2*np.sqrt(self.L.variances[dimension][self.L.classifications.index(c)][i]) for i in range(len(theCoefficients))]
-        x = [i/5.0 for i in range(5*100)]
-        y = [self.C.evalH(theCoefficientsL,101,i) for i in x]
+        theCoefficientsL = [theCoefficients[0]+2*np.sqrt(np.real(theVariances[0]))+2j*np.sqrt(np.imag(theVariances[0]))]+[(theCoefficients[i][0]+2*np.sqrt(np.real(theVariances[i][0]))+2j*np.sqrt(np.imag(theVariances[i][0])),theCoefficients[i][1]+2*np.sqrt(np.real(theVariances[i][1]))+2j*np.sqrt(np.imag(theVariances[i][1]))) for i in range(1,len(theCoefficients))]
+        x = [i/d for i in range(int(d*(domain-1)))]
+        if imaginary:
+            y = [np.imag(self.C.evalH(theCoefficientsL,domain,i)) for i in x]
+        else:
+            y = [np.real(self.C.evalH(theCoefficientsL,domain,i)) for i in x]
         plt.plot(x,y,color=colors.hsv_to_rgb(new_color))
 
-        theCoefficientsR = [theCoefficients[i] - 2*np.sqrt(self.L.variances[dimension][self.L.classifications.index(c)][i]) for i in range(len(theCoefficients))]
-        x = [i/5.0 for i in range(5*100)]
-        y = [self.C.evalH(theCoefficientsR,101,i) for i in x]
+        theCoefficientsR = [theCoefficients[0]-2*np.sqrt(np.real(theVariances[0]))-2j*np.sqrt(np.imag(theVariances[0]))]+[(theCoefficients[i][0]-2*np.sqrt(np.real(theVariances[i][0]))-2j*np.sqrt(np.imag(theVariances[i][0])),theCoefficients[i][1]-2*np.sqrt(np.real(theVariances[i][1]))-2j*np.sqrt(np.imag(theVariances[i][1]))) for i in range(1,len(theCoefficients))]
+        x = [i/d for i in range(int(d*(domain-1)))]
+        if imaginary:
+            y = [np.imag(self.C.evalH(theCoefficientsR,domain,i)) for i in x]
+        else:
+            y = [np.real(self.C.evalH(theCoefficientsR,domain,i)) for i in x]
         plt.plot(x,y,color=colors.hsv_to_rgb(new_color))

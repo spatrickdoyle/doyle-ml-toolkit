@@ -2,21 +2,24 @@
 #Written by Sean Doyle in 2017 as part of research at Southern Methodist University
 
 from DoyleMLToolkit import Subtoken
+import matplotlib.pyplot as plt
 
 from abc import ABCMeta, abstractmethod
 from scipy.special import erf
 import numpy as np
+import copy
 
 #Abstract distribution class
 class Distribution:
     __metaclass__ = ABCMeta
 
     @abstractmethod
-    def __init__(self, y, C, weights):
+    def __init__(self, y, C, avg=[]):
         #list y[]: corresponding list of classifications
         #list C[dimension][row][order]: nested list of coefficients to use to train the function
+        #list avg[][][]: list of average values for the data sweeps [dimension][classification][value], may be empty
 
-        #Weights may or may not be empty, and will only be used sometimes
+        #If avg is populated, use weights. If not, ignore it
 
         #self.classifications is a list of all possible classifications for the data. This is set in the
         #constructor if it is a discrete distribution, and left empty if continuous
@@ -128,17 +131,28 @@ class Distribution:
         return self.variances[dimension][self.classifications.index(classification)][n]
 
 
+    #This function is used internally
+    def costFunction(self, h, y):
+        #function h: the approximation to evaluate
+        #list y[]: the list of points to check against
+        #returns an int, the difference score
+
+        return 0.5*sum([(np.real(h(i)-y[i]))**2 for i in range(len(y))]) + 0.5*sum([(np.imag(h(i)-y[i]))**2 for i in range(len(y))])
+
+
 #Discrete classification, assumes that the distribution of points is Gaussian, and
-#evaluates each order of feature separately and just averages them without weights
+#evaluates each order of feature separately and just averages them with or without weights
 #Data must be single-dimensional for now, but can be complex
 #Also uses POPULATION VARIANCE, rather than sample variance
-class UnweightedGaussianClassification(Distribution):
-    def __init__(self, y, C, weights):
+class GaussianClassification(Distribution):
+    def __init__(self, y, C, zeroth, avg=[], method=None):
         #list y[]: corresponding list of classifications
         #list C[dimension][row][order]: nested list of coefficients to use to train the function
+        #bool zeroth: whether the zeroth coefficient should be used when making classifications
+        #list avg[][][]: list of average values for the data sweeps [dimension][classification][value], may be empty
+        #function method: instance of evalH function to use with avg to calculate differences
 
-        #Weights may or may not be empty, and will only be used sometimes
-        self.weights = weights
+        self.zeroth = 1-int(zeroth)
 
         #List of all possible classifications for the data. This is set in the
         #constructor if it is a discrete distribution, and left empty if continuous
@@ -159,9 +173,9 @@ class UnweightedGaussianClassification(Distribution):
         self.variances = []
         if self.discrete:
             #self.means[dimension][classification][order]
-            self.means = [[[0 for j in C[0][0]] for i in self.classifications] for k in C]
+            self.means = [[[[0,0] for j in C[0][0]] for i in self.classifications] for k in C]
             #self.variances[dimension][classification][order]
-            self.variances = [[[0 for j in C[0][0]] for i in self.classifications] for k in C]
+            self.variances = [[[[0,0] for j in C[0][0]] for i in self.classifications] for k in C]
 
             self.samples = [[[[] for j in C[0][0]] for i in self.classifications] for k in C]
 
@@ -172,8 +186,13 @@ class UnweightedGaussianClassification(Distribution):
             for d in range(len(C)):
                 for classification in range(len(self.samples[0])):
                     for n in range(len(C[0][0])):
-                        self.means[d][classification][n] = sum(self.samples[d][classification][n])/len(self.samples[d][classification][n])
-                        self.variances[d][classification][n] = sum([(np.real(i-self.means[d][classification][n])**2) + (np.imag(i-self.means[d][classification][n])**2)*1j for i in self.samples[d][classification][n]])/len(self.samples[d][classification][n])
+                        if type(self.samples[d][classification][n][0]) is tuple:
+                            for i in range(2):
+                                self.means[d][classification][n][i] = sum([j[i] for j in self.samples[d][classification][n]])/len(self.samples[d][classification][n])
+                                self.variances[d][classification][n][i] = sum([(np.real(k[i]-self.means[d][classification][n][i])**2) + (np.imag(k[i]-self.means[d][classification][n][i])**2)*1j for k in self.samples[d][classification][n]])/len(self.samples[d][classification][n])
+                        else:
+                            self.means[d][classification][n] = sum(self.samples[d][classification][n])/len(self.samples[d][classification][n])
+                            self.variances[d][classification][n] = sum([(np.real(k-self.means[d][classification][n])**2) + (np.imag(k-self.means[d][classification][n])**2)*1j for k in self.samples[d][classification][n]])/len(self.samples[d][classification][n])
         else:
             #For a discrete distribution each one can be checked individually, but for
             #a continous one we gotta regress those values
@@ -181,6 +200,48 @@ class UnweightedGaussianClassification(Distribution):
             self.thetaM = []
             self.thetaL = []
             self.thetaR = []
+
+        self.average = avg
+        self.evalH = method
+
+
+        #ASDFASDF
+        #d = 1.0
+        #x = [i/d for i in range(int(d*(len(self.average[0][0])-1)))]
+        #ASDFASDF
+
+        if (len(self.average) > 0) and (self.evalH != None):
+            self.weights = [[[[0,0] for j in C[0][0]] for i in self.classifications] for k in C]
+            sums = [[0 for i in self.classifications] for k in C]
+
+            for d in range(len(self.means)):
+                for classification in range(len(self.classifications)):
+                    minimum = self.costFunction(lambda x:self.evalH(self.means[d][classification],x),self.average[d][classification])
+                    for n in range(self.zeroth,len(self.means[d][classification])):
+                        if type(self.means[d][classification][n]) is list:
+                            for i in range(2):
+                                current = copy.deepcopy(self.means[d][classification])
+                                current[n][i] = 0
+                                #y = [np.imag(self.evalH(current,ii)) for ii in x]
+                                #print current
+                                #plt.plot(x,y,'#ff0000')
+                                #plt.show()
+                                score = self.costFunction(lambda x:self.evalH(current,x),self.average[d][classification])
+                                self.weights[d][classification][n][i] = score-minimum
+                                sums[d][classification] += self.weights[d][classification][n][i]
+                        else:
+                            current = copy.deepcopy(self.means[d][classification])
+                            current[n] = 0
+                            score = self.costFunction(lambda x:self.evalH(current,x),self.average[d][classification])
+                            self.weights[d][classification][n] = score-minimum
+                            sums[d][classification] += self.weights[d][classification][n]
+                    for n in range(self.zeroth,len(self.means[d][classification])):
+                        if type(self.means[d][classification][n]) is list:
+                            for i in range(2):
+                                self.weights[d][classification][n][i] /= sums[d][classification]
+                        else:
+                            self.weights[d][classification][n] /= sums[d][classification]
+                    #print self.weights[d][classification]
 
     def mostLikely(self, c):
         #list c[]: list of coefficients representing the sweep to classify
@@ -196,18 +257,27 @@ class UnweightedGaussianClassification(Distribution):
         for cls in range(len(self.means[0])):
             probs.append([])
             #For each order coefficient in c
-            for n in range(len(c)):
-                #Figure out the likelihood of the given coefficient falling in the distribution of this class
-                prbreal = (np.e**(-(np.real(c[n]-self.means[0][cls][n])**2)/(2.0*np.real(self.variances[0][cls][n]))))/np.sqrt(2.0*np.pi*np.real(self.variances[0][cls][n]))
-                prbimag = (np.e**(-(np.imag(c[n]-self.means[0][cls][n])**2)/(2.0*np.imag(self.variances[0][cls][n]))))/np.sqrt(2.0*np.pi*np.imag(self.variances[0][cls][n]))
-                if np.isnan(prbimag):
-                    prbimag = 1
-
-                #Add it to the list
-                probs[-1].append(prbreal*prbimag)
+            for n in range(self.zeroth,len(c)):
+                if type(c[n]) is tuple:
+                    for i in range(2):
+                        #Figure out the likelihood of the given coefficient falling in the distribution of this class
+                        prb = self.likelihood(c[n][i],self.means[0][cls][n][i],self.variances[0][cls][n][i])
+                        if len(self.average) == 0:
+                            probs[-1].append(prb)
+                        else:
+                            probs[-1].append(self.weights[0][cls][n][i]*prb)
+                else:
+                    prb = self.likelihood(c[n],self.means[0][cls][n],self.variances[0][cls][n])
+                    if len(self.average) == 0:
+                        probs[-1].append(prb)
+                    else:
+                        probs[-1].append(self.weights[0][cls][n]*prb)
 
         #Use the given method to calculate the total normed likelihood
-        probs = [sum(i)/len(i) for i in probs]
+        if len(self.average) == 0:
+            probs = [sum(i)/len(i) for i in probs]
+        else:
+            probs = [sum(i) for i in probs]
 
         #Return the tuple
         mx = max(probs)
@@ -230,15 +300,13 @@ class UnweightedGaussianClassification(Distribution):
         for cls in range(len(self.means[0])):
             probs.append([])
             #For each order coefficient in c
-            for n in range(len(c)):
-                #Figure out the likelihood of the given coefficient falling in the distribution of this class
-                prbreal = (np.e**(-(np.real(c[n]-self.means[0][cls][n])**2)/(2.0*np.real(self.variances[0][cls][n]))))/np.sqrt(2.0*np.pi*np.real(self.variances[0][cls][n]))
-                prbimag = (np.e**(-(np.imag(c[n]-self.means[0][cls][n])**2)/(2.0*np.imag(self.variances[0][cls][n]))))/np.sqrt(2.0*np.pi*np.imag(self.variances[0][cls][n]))
-                if np.isnan(prbimag):
-                    prbimag = 1
-
-                #Add it to the list
-                probs[-1].append(prbreal*prbimag)
+            for n in range(self.zeroth,len(c)):
+                if type(c[n]) is tuple:
+                    for i in range(2):
+                        #Figure out the likelihood of the given coefficient falling in the distribution of this class
+                        probs[-1].append(self.likelihood(c[n][i],self.means[0][cls][n][i],self.variances[0][cls][n][i]))
+                else:
+                    probs[-1].append(self.likelihood(c[n],self.means[0][cls][n],self.variances[0][cls][n]))
 
         #Use the given method to calculate the total normed likelihood
         probs = [sum(i)/len(i) for i in probs]
@@ -266,3 +334,10 @@ class UnweightedGaussianClassification(Distribution):
 
         #Return a new Token object
         return Subtoken([classification for i in range(n)],[[[0 for i in range(domain)]]],[newCoefs])
+
+    def likelihood(self, x, mu, sigma):
+        prbreal = (np.e**(-(np.real(x-mu)**2)/(2.0*np.real(sigma))))/np.sqrt(2.0*np.pi*np.real(sigma))
+        prbimag = (np.e**(-(np.imag(x-mu)**2)/(2.0*np.imag(sigma))))/np.sqrt(2.0*np.pi*np.imag(sigma))
+        if np.isnan(prbimag):
+            prbimag = 1
+        return prbreal*prbimag

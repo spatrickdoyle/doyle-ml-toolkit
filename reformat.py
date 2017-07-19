@@ -1,4 +1,5 @@
 import numpy as np
+import glob
 
 def newModel():
     impSrc = file("/home/sean/Documents/Research/ImpedanceData.csv","r")
@@ -129,14 +130,14 @@ def UterusCOXNew(path):
     outpt.close()
 
 def soundData():
-    inName = "8JulySound/piano/E2-0%d.txt"
-    outName = "8JulySound/piano/E2.csv"
+    inName = "14JulySound/clarinet/*.txt"
+    outName = "14JulySound/clarinet/E2.csv"
 
     outpt = file(outName,"w")
 
-    for i in range(10):
+    for i in glob.glob(inName):
         tmp = []
-        inp = file(inName%i,"r")
+        inp = file(i,"r")
         for line in inp.readlines():
             if line[0] == ";":
                 continue
