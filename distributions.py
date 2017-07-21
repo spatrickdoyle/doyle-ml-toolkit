@@ -304,12 +304,23 @@ class GaussianClassification(Distribution):
                 if type(c[n]) is tuple:
                     for i in range(2):
                         #Figure out the likelihood of the given coefficient falling in the distribution of this class
-                        probs[-1].append(self.likelihood(c[n][i],self.means[0][cls][n][i],self.variances[0][cls][n][i]))
+                        prb = self.likelihood(c[n][i],self.means[0][cls][n][i],self.variances[0][cls][n][i])
+                        if len(self.average) == 0:
+                            probs[-1].append(prb)
+                        else:
+                            probs[-1].append(self.weights[0][cls][n][i]*prb)
                 else:
-                    probs[-1].append(self.likelihood(c[n],self.means[0][cls][n],self.variances[0][cls][n]))
+                    prb = self.likelihood(c[n],self.means[0][cls][n],self.variances[0][cls][n])
+                    if len(self.average) == 0:
+                        probs[-1].append(prb)
+                    else:
+                        probs[-1].append(self.weights[0][cls][n]*prb)
 
         #Use the given method to calculate the total normed likelihood
-        probs = [sum(i)/len(i) for i in probs]
+        if len(self.average) == 0:
+            probs = [sum(i)/len(i) for i in probs]
+        else:
+            probs = [sum(i) for i in probs]
 
         #Return it
         return probs[self.classifications.index(y)]/sum(probs)
@@ -338,6 +349,8 @@ class GaussianClassification(Distribution):
     def likelihood(self, x, mu, sigma):
         prbreal = (np.e**(-(np.real(x-mu)**2)/(2.0*np.real(sigma))))/np.sqrt(2.0*np.pi*np.real(sigma))
         prbimag = (np.e**(-(np.imag(x-mu)**2)/(2.0*np.imag(sigma))))/np.sqrt(2.0*np.pi*np.imag(sigma))
+        if np.isnan(prbreal):
+            prbreal = 1
         if np.isnan(prbimag):
             prbimag = 1
         return prbreal*prbimag

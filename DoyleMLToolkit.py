@@ -415,7 +415,7 @@ class ODFC:
 
     def test(self, data):
         #Token data: Token of data to test, must already contain classifications
-        #returns an integer, the rate of correct identification
+        #returns an integer, the rate of correct identification using "leave one out" testing
 
         if (len(data.getAllY()) != len(data.getAllData()[0])) or (data.getAllY().count("") != 0):
             print "Token must contain classifications"
@@ -428,7 +428,9 @@ class ODFC:
             thisRow = self.train(data,[row])
 
             #Record the likelihood that the current row belongs to the known classification
-            ret.append(self.predict(thisRow,thisRow.getAllY())[0][1])
+            result = self.predict(thisRow,thisRow.getAllY())[0]
+            print result
+            ret.append(result[1])
 
         #Return the average
         return sum(ret)/len(ret)
@@ -471,7 +473,6 @@ class ODFC:
         else:
             y = [np.real(self.C.evalH(theCoefficients,data.length,i)) for i in x]
         plt.plot(x,y,color)
-        plt.show()
 
     def plotDistributionByOrder(self, n, dimension=0):
         #int n: the order of coefficient to show the distribution for

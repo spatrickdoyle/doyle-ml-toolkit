@@ -46,7 +46,7 @@ class ComplexFourier(Approximation):
         T = len(X) #Period of the set
         w = (2*PI)/T #Angular frequency
 
-        #Calculate and return the coefficient - bearing in mind the formula for the 0th is different
+        #Calculate and return the coefficients - bearing in mind the formula for the 0th is different
         if n == 0:
             return (1.0/(2.0*T))*sum([X[j]+X[j-1] for j in range(1,m)])
         else:
@@ -63,3 +63,29 @@ class ComplexFourier(Approximation):
         #Evaluate the approximation at x
         return sum([C[n][1]*E**(1j*(-n)*w*(x+1)) for n in range(1,order+1)])+sum([C[n][0]*E**(1j*n*w*(x+1)) for n in range(1,order+1)])+C[0]
         #return sum([(np.real(C[n]) - np.imag(C[n])*1j)*E**(1j*(-n)*w*(x+1)) for n in range(1,order+1)])+sum([C[n]*E**(1j*n*w*(x+1)) for n in range(1,order+1)])+C[0]
+
+
+#Real Fourier decomposition, discontinuous
+class RealFourier(Approximation):
+    def __init__(self):
+        self.name = "RealFourier"
+
+    def getC(self, n, X):
+        #Use the data set to figure out omega and tau and such
+        k = len(X) #Length of the set
+
+        #Calculate and return the coefficients - bearing in mind the formula for the 0th is different
+        if n == 0:
+            return (1.0/k)*sum([X[j]+X[j-1] for j in range(1,k)])
+        else:
+            a = (1/(PI*n))*sum([(X[j]-X[j-1])*(np.sin((j-1)*2.0*PI*n/k)+(k/(2*PI*n))*(np.cos(2*PI*n*j/k)-np.cos(2*PI*n*(j-1)/k))) + X[j]*(np.sin(2*PI*n*j/k)-np.sin(2*PI*n*(j-1)/k)) for j in range(1,k)])
+            b = (1/(PI*n))*sum([(X[j]-X[j-1])*(-np.cos((j-1)*2.0*PI*n/k)+(k/(2*PI*n))*(np.sin(2*PI*n*j/k)-np.sin(2*PI*n*(j-1)/k))) - X[j]*(np.cos(2*PI*n*j/k)-np.cos(2*PI*n*(j-1)/k)) for j in range(1,k)])
+            return (a,b)
+
+    def evalH(self, C, T, x):
+        #Use T to calculate omega
+        w = (2*PI)/T
+        order = len(C)-1
+
+        #Evaluate the approximation at x
+        return (C[0]/2.0) + sum([C[n][0]*np.cos(n*w*x) + C[n][1]*np.sin(n*w*x) for n in range(1,order+1)])
