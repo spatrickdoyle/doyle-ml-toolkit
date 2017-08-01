@@ -130,8 +130,8 @@ def UterusCOXNew(path):
     outpt.close()
 
 def soundData():
-    inName = "14JulySound/trumpet2/*.txt"
-    outName = "14JulySound/trumpet2/E3.csv"
+    inName = "8JulySound/piano/*.txt"
+    outName = "8JulySound/piano/D3.csv"
 
     outpt = file(outName,"w")
 

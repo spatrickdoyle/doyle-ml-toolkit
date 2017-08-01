@@ -1,4 +1,4 @@
-#Collection of decomposition coefficient functions
+#Collection of feature extraction functions
 #Written by Sean Doyle in 2017 as part of research at Southern Methodist University
 
 from abc import ABCMeta, abstractmethod
@@ -7,7 +7,7 @@ import numpy as np
 PI = np.pi
 E = np.e
 
-class Approximation:
+class Extractor:
     __metaclass__ = ABCMeta
 
     @abstractmethod
@@ -36,7 +36,7 @@ class Approximation:
 
 
 #Complex Fourier decomposition, discontinuous
-class ComplexFourier(Approximation):
+class ComplexFourier(Extractor):
     def __init__(self):
         self.name = "ComplexFourier"
 
@@ -66,7 +66,7 @@ class ComplexFourier(Approximation):
 
 
 #Real Fourier decomposition, discontinuous
-class RealFourier(Approximation):
+class RealFourier(Extractor):
     def __init__(self):
         self.name = "RealFourier"
 

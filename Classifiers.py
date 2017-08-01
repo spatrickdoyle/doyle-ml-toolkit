@@ -4,17 +4,19 @@
 from DoyleMLToolkit import Subtoken
 import matplotlib.pyplot as plt
 
+from sklearn.naive_bayes import GaussianNB
+
 from abc import ABCMeta, abstractmethod
 from scipy.special import erf
 import numpy as np
 import copy
 
 #Abstract distribution class
-class Distribution:
+class Classifier:
     __metaclass__ = ABCMeta
 
     @abstractmethod
-    def __init__(self, y, C, avg=[]):
+    def __init__(self, y, C, zeroth, avg=[], method=None):
         #list y[]: corresponding list of classifications
         #list C[dimension][row][order]: nested list of coefficients to use to train the function
         #list avg[][][]: list of average values for the data sweeps [dimension][classification][value], may be empty
@@ -144,7 +146,7 @@ class Distribution:
 #evaluates each order of feature separately and just averages them with or without weights
 #Data must be single-dimensional for now, but can be complex
 #Also uses POPULATION VARIANCE, rather than sample variance
-class GaussianClassification(Distribution):
+class GaussianClassification(Classifier):
     def __init__(self, y, C, zeroth, avg=[], method=None):
         #list y[]: corresponding list of classifications
         #list C[dimension][row][order]: nested list of coefficients to use to train the function
@@ -339,12 +341,17 @@ class GaussianClassification(Distribution):
         newCoefs = [[] for i in range(n)]
         #For each order, use numpy to generate a new value coefficient
         for order in range(len(self.means[0][0])):
-            new = np.random.normal(self.means[0][self.classifications.index(classification)][order],np.sqrt(self.variances[0][self.classifications.index(classification)][order]),n)
+            if type(self.means[0][self.classifications.index(classification)][order]) is list:
+                new1 = np.random.normal(self.means[0][self.classifications.index(classification)][order][0], np.sqrt(self.variances[0][self.classifications.index(classification)][order][0]),n)
+                new2 = np.random.normal(self.means[0][self.classifications.index(classification)][order][1], np.sqrt(self.variances[0][self.classifications.index(classification)][order][1]),n)
+                new = [[new1[ii],new2[ii]] for ii in range(n)]
+            else:
+                new = np.random.normal(self.means[0][self.classifications.index(classification)][order],np.sqrt(self.variances[0][self.classifications.index(classification)][order]),n)
             for i in range(len(new)):
                 newCoefs[i].append(new[i])
 
         #Return a new Token object
-        return Subtoken([classification for i in range(n)],[[[0 for i in range(domain)]]],[newCoefs])
+        return Subtoken([classification for i in range(n)],[[[0 for i in range(domain)] for i in range(n)]],[newCoefs])
 
     def likelihood(self, x, mu, sigma):
         prbreal = (np.e**(-(np.real(x-mu)**2)/(2.0*np.real(sigma))))/np.sqrt(2.0*np.pi*np.real(sigma))
@@ -354,3 +361,68 @@ class GaussianClassification(Distribution):
         if np.isnan(prbimag):
             prbimag = 1
         return prbreal*prbimag
+
+
+class NaiveBayesReal(Classifier):
+    def __init__(self, y, C, zeroth, avg=[], method=None):
+        self.y = y
+        self.C = C
+
+        self.classes = sorted(list(set(self.y)))
+        self.X = [[float(np.real(j[0])) if type(j) is tuple else float(np.real(j)) for j in i] for i in C[0]]
+
+        self.gnb = GaussianNB()
+        self.trained = self.gnb.fit(self.X,self.y)
+
+        #classifications = self.trained.predict(self.X)
+        #probs = self.trained.predict_proba(self.X)
+        #print len(classifications[0]),len(probs[0])
+        #for i in range(len(classifications)):
+        #    print classifications[i],probs[i][self.classes.index(classifications[i])]/sum(probs[i])
+
+    def mostLikely(self, c):
+        x = [[float(np.real(j[0])) if type(j) is tuple else float(np.real(j)) for j in c]]
+        classifications = self.trained.predict(x)
+        probs = self.trained.predict_proba(x)
+        return (classifications[0],probs[0][self.classes.index(classifications[0])]/sum(probs[0]))
+
+    def checkY(self, y, c):
+        x = [[float(np.real(j[0])) if type(j) is tuple else float(np.real(j)) for j in c]]
+        classifications = self.trained.predict(x)
+        probs = self.trained.predict_proba(x)
+        return probs[0][self.classes.index(y)]/sum(probs[0])
+
+    def genData(self):
+        return -1
+
+class NaiveBayesImag(Classifier):
+    def __init__(self, y, C, zeroth, avg=[], method=None):
+        self.y = y
+        self.C = C
+
+        self.classes = sorted(list(set(self.y)))
+        self.X = [[float(np.imag(j[0])) if type(j) is tuple else float(np.imag(j)) for j in i] for i in C[0]]
+
+        self.gnb = GaussianNB()
+        self.trained = self.gnb.fit(self.X,self.y)
+
+        #classifications = self.trained.predict(self.X)
+        #probs = self.trained.predict_proba(self.X)
+        #print len(classifications[0]),len(probs[0])
+        #for i in range(len(classifications)):
+        #    print classifications[i],probs[i][self.classes.index(classifications[i])]/sum(probs[i])
+
+    def mostLikely(self, c):
+        x = [[float(np.imag(j[0])) if type(j) is tuple else float(np.imag(j)) for j in c]]
+        classifications = self.trained.predict(x)
+        probs = self.trained.predict_proba(x)
+        return (classifications[0],probs[0][self.classes.index(classifications[0])]/sum(probs[0]))
+
+    def checkY(self, y, c):
+        x = [[float(np.imag(j[0])) if type(j) is tuple else float(np.imag(j)) for j in c]]
+        classifications = self.trained.predict(x)
+        probs = self.trained.predict_proba(x)
+        return probs[0][self.classes.index(y)]/sum(probs[0])
+
+    def genData(self):
+        return -1
