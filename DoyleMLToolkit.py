@@ -18,6 +18,7 @@ class Token:
         #Extractor method: the feature extraction object to use
         #int order: the number of features to generate and use
 
+        self.order = order
         self.dimension = len(X) #Dimension of data
         self.size = len(X[0]) #Number of rows
         self.length = len(X[0][0]) #Length of each row
@@ -208,26 +209,48 @@ class Token:
         #Return the new Subtoken
         return new_subtoken
 
-    def getBySweep(self, row, dimension=0):
+    def getFeaturesBySweep(self, row, dimension=0, part=-1, which=0):
         #int row: the index of the set of features to return
         #int dimension: the data set to pull from
+        #int part: real (0) or imaginary (1) part, default is both (-1)
+        #int which: which element of the tuple to return if it is tuples
         #returns a list of ints, the features of that sweep
 
         #Make a copy of the list of features at index row
-        row_copy = self.features[dimension][row][:]
+        if part == -1:
+            row_copy = [i[which] if type(i) is tuple else i for i in self.features[dimension][row]]
+        elif part == 0:
+            row_copy = [float(np.real(i[which])) if type(i) is tuple else float(np.real(i)) for i in self.features[dimension][row]]
+        elif part == 1:
+            row_copy = [float(np.imag(i[which])) if type(i) is tuple else float(np.imag(i)) for i in self.features[dimension][row]]
 
         #Return it
         return row_copy
 
-    def getByOrder(self, order, dimension=0):
+    def getFeaturesByOrder(self, order, dimension=0, part=-1, which=0):
         #int order: the order of the set of features to return
         #int dimension: the data set to pull from
+        #int part: real (0) or imaginary (1) part, default is both (-1)
+        #int which: which element of the tuple to return if it is tuples
         #returns a list of ints, the features of that order for each sweep
 
         #Construct a list of features at each index of the correct order
         feats = []
         for row in self.features[dimension]:
-            feats.append(row[order][:])
+            if type(row[order]) is tuple:
+                if part == -1:
+                    feats.append(row[order][which])
+                elif part == 0:
+                    feats.append(float(np.real(row[order][which])))
+                elif part == 1:
+                    feats.append(float(np.imag(row[order][which])))
+            else:
+                if part == -1:
+                    feats.append(row[order])
+                elif part == 0:
+                    feats.append(float(np.real(row[order])))
+                elif part == 1:
+                    feats.append(float(np.imag(row[order])))
 
         #Return it
         return feats
@@ -276,19 +299,18 @@ class Subtoken(Token):
         self.dimension = len(self.X)
         self.size = len(self.X[0])
         self.length = len(self.X[0][0])
+        self.order = len(F[0][0])-1
 
 
 #Public interface for the toolkit
 class Model:
-    def __init__(self, extractor, selection, order, cost, zeroth=1, dimension=1):
+    def __init__(self, extractor, selection, order, zeroth=1, dimension=1):
         #class extractor: the constructor of the feature extraction method to use
         #class selection: the likelihood function class to use
         #int order: the number of features to use
-        #bool cost: if True, it will use weights with distribution
         #bool zeroth: whether the zeroth coefficient should be used to make classifications
         #int dimension: the number of vectors each data reading consists of
 
-        self.cost = cost
         self.zeroth = zeroth
 
         self.C = extractor()
@@ -374,7 +396,7 @@ class Model:
             the_token = data
             exclusion_token = None
 
-        #Calculate the average of the training data to pass to the distribution, if cost is set
+        '''#Calculate the average of the training data to pass to the distribution, if cost is set
         averages = []
         if self.cost:
             classifications = list(set(data.getAllY()))
@@ -384,12 +406,12 @@ class Model:
                     averages[-1].append([])
                     for row in range(data.size):
                         if data.getAllY()[row] == classification:
-                            averages[-1][-1].append(data.getBySweep(row,dimension))
+                            averages[-1][-1].append(data.getFeaturesBySweep(row,dimension))
                     tmp = [sum([i[j] for i in averages[-1][-1]])/len(averages[-1][-1]) for j in range(data.length)]
-                    averages[-1][-1] = tmp
+                    averages[-1][-1] = tmp'''
 
         #Use the data token to instantiate the appropriate distribution
-        self.L = self.classifier(the_token.getAllY(),the_token.getAllFeatures(),self.zeroth,averages,lambda C,x:self.C.evalH(C,data.length,x))
+        self.L = self.classifier(the_token,self.zeroth)#,averages,lambda C,x:self.C.evalH(C,data.length,x))
         self.domain = the_token.length
 
         #Return the exclusion token (might be None)
@@ -406,17 +428,18 @@ class Model:
         ret = []
         if len(prediction) == 0:
             for row in range(data.size):
-                ret.append(self.L.mostLikely(data.getBySweep(row)))
+                ret.append(self.L.mostLikely(data.getFeaturesBySweep(row)))
         else:
             #If prediction is passed, then for each prediction
-            for row in range(len(data.getAllFeatures()[0])):
-                ret.append((prediction[row],self.L.checkY(prediction[row],data.getBySweep(row))))
+            for row in range(data.size):
+                ret.append((prediction[row],self.L.checkY(prediction[row],data.getFeaturesBySweep(row))))
 
         #Return the constructed list
         return ret
 
-    def test(self, data):
+    def test(self, data, verbose=False):
         #Token data: Token of data to test, must already contain classifications
+        #bool verbose: if True, print each individual result
         #returns an integer, the rate of correct identification using "leave one out" testing
 
         if (len(data.getAllY()) != data.size) or (data.getAllY().count("") != 0):
@@ -431,7 +454,8 @@ class Model:
 
             #Record the likelihood that the current row belongs to the known classification
             result = self.predict(thisRow,thisRow.getAllY())[0]
-            print result
+            if verbose:
+                print result
             ret.append(result[1])
 
         #Return the average
@@ -469,7 +493,7 @@ class Model:
         #Returns an array of the points being plotted
 
         d = 1.0
-        theCoefficients = data.getBySweep(row,dimension)
+        theCoefficients = data.getAllFeatures()[dimension][row]
 
         x = [i/d for i in range(int(d*(data.length-1)))]
         if imaginary:

@@ -16,10 +16,9 @@ class Classifier:
     __metaclass__ = ABCMeta
 
     @abstractmethod
-    def __init__(self, y, C, zeroth, avg=[], method=None):
-        #list y[]: corresponding list of classifications
-        #list C[dimension][row][order]: nested list of coefficients to use to train the function
-        #list avg[][][]: list of average values for the data sweeps [dimension][classification][value], may be empty
+    def __init__(self, data, zeroth):
+        #Token data: Token containing the features and classifications to use
+        #bool zeroth: if True, use zeroth coefficient
 
         #If avg is populated, use weights. If not, ignore it
 
@@ -94,7 +93,7 @@ class Classifier:
         pass
 
 
-    #Accessors for the distribution representation functions
+    '''#Accessors for the distribution representation functions
     def getMeanFunc(self, n, dimension=0):
         #int n: order of curve to return
         #int dimension: the data set to pull from
@@ -139,10 +138,134 @@ class Classifier:
         #list y[]: the list of points to check against
         #returns an int, the difference score
 
-        return 0.5*sum([(np.real(h(i)-y[i]))**2 for i in range(len(y))]) + 0.5*sum([(np.imag(h(i)-y[i]))**2 for i in range(len(y))])
+        return 0.5*sum([(np.real(h(i)-y[i]))**2 for i in range(len(y))]) + 0.5*sum([(np.imag(h(i)-y[i]))**2 for i in range(len(y))])'''
 
 
-#Discrete classification, assumes that the distribution of points is Gaussian, and
+class NaiveBayesReal(Classifier):
+    def __init__(self, data, zeroth):
+        self.y = data.getAllY()
+
+        self.classes = sorted(list(set(self.y)))
+        self.X = [data.getFeaturesBySweep(row,0,0) for row in range(data.size)]
+
+        self.gnb = GaussianNB()
+        self.trained = self.gnb.fit(self.X,self.y)
+
+    def mostLikely(self, c):
+        x = [[float(np.real(j)) for j in c]]
+        classifications = self.trained.predict(x)
+        probs = self.trained.predict_proba(x)
+        return (classifications[0],probs[0][self.classes.index(classifications[0])]/sum(probs[0]))
+
+    def checkY(self, y, c):
+        x = [[float(np.real(j)) for j in c]]
+        classifications = self.trained.predict(x)
+        probs = self.trained.predict_proba(x)
+        return probs[0][self.classes.index(y)]/sum(probs[0])
+
+    def genData(self):
+        return -1
+
+class NaiveBayesImag(Classifier):
+    def __init__(self, data, zeroth):
+        self.y = data.getAllY()
+
+        self.classes = sorted(list(set(self.y)))
+        self.X = [data.getFeaturesBySweep(row,0,1) for row in range(data.size)]
+
+        self.gnb = GaussianNB()
+        self.trained = self.gnb.fit(self.X,self.y)
+
+    def mostLikely(self, c):
+        x = [[float(np.imag(j)) for j in c]]
+        classifications = self.trained.predict(x)
+        probs = self.trained.predict_proba(x)
+        return (classifications[0],probs[0][self.classes.index(classifications[0])]/sum(probs[0]))
+
+    def checkY(self, y, c):
+        x = [[float(np.imag(j)) for j in c]]
+        classifications = self.trained.predict(x)
+        probs = self.trained.predict_proba(x)
+        return probs[0][self.classes.index(y)]/sum(probs[0])
+
+    def genData(self):
+        return -1
+
+class WeightedBayesReal(Classifier):
+    def __init__(self, data, zeroth):
+        imaginary = 0
+        self.y = data.getAllY()
+        self.order = data.order
+
+        self.classes = sorted(list(set(self.y)))
+        self.Xs = [[[data.getFeaturesBySweep(row,0,imaginary)[n]] for row in range(data.size)] for n in range(data.order)]
+
+        self.gnbs = [GaussianNB() for n in range(data.order)]
+        self.trained = [self.gnbs[g].fit(self.Xs[g],self.y) for g in range(data.order)]
+
+        mu = [sum(data.getFeaturesByOrder(i,0,imaginary))/data.size for i in range(data.order+1)]
+        sigmas = [np.dot([j-mu[i] for j in data.getFeaturesByOrder(i,0,imaginary)],[j-mu[i] for j in data.getFeaturesByOrder(i,0,imaginary)]) for i in range(data.order+1)]
+        self.weights = [i/sum(sigmas) for i in sigmas]
+        print self.weights
+
+    def mostLikely(self, c):
+        result = [0.0 for i in self.classes]
+        for n in range(self.order):
+            result += self.weights[n]*self.trained[n].predict_proba([[float(np.real(c[n]))]])
+        result = result.tolist()[0]
+
+        return (self.classes[result.index(max(result))],max(result))
+
+    def checkY(self, y, c):
+        result = [0.0 for i in self.classes]
+        for n in range(self.order):
+            result += self.weights[n]*self.trained[n].predict_proba([[float(np.real(c[n]))]])
+        result = result.tolist()[0]
+
+        return result[self.classes.index(y)]
+
+    def genData(self):
+        return -1
+
+class WeightedBayesImag(Classifier):
+    def __init__(self, data, zeroth):
+        imaginary = 1
+        self.y = data.getAllY()
+        self.order = data.order
+
+        self.classes = sorted(list(set(self.y)))
+        self.Xs = [[[data.getFeaturesBySweep(row,0,imaginary)[n]] for row in range(data.size)] for n in range(data.order)]
+
+        self.gnbs = [GaussianNB() for n in range(data.order)]
+        self.trained = [self.gnbs[g].fit(self.Xs[g],self.y) for g in range(data.order)]
+
+        mu = [sum(data.getFeaturesByOrder(i,0,imaginary))/data.size for i in range(data.order+1)]
+        sigmas = [np.dot([j-mu[i] for j in data.getFeaturesByOrder(i,0,imaginary)],[j-mu[i] for j in data.getFeaturesByOrder(i,0,imaginary)]) for i in range(data.order+1)]
+        self.weights = [i/sum(sigmas) for i in sigmas]
+        print self.weights
+
+    def mostLikely(self, c):
+        result = [0.0 for i in self.classes]
+        for n in range(self.order):
+            result += self.weights[n]*self.trained[n].predict_proba([[float(np.imag(c[n]))]])
+        result = result.tolist()[0]
+
+        return (self.classes[result.index(max(result))],max(result))
+
+    def checkY(self, y, c):
+        result = [0.0 for i in self.classes]
+        for n in range(self.order):
+            result += self.weights[n]*self.trained[n].predict_proba([[float(np.imag(c[n]))]])
+        result = result.tolist()[0]
+
+        return result[self.classes.index(y)]
+
+    def genData(self):
+        return -1
+
+
+
+'''#Discrete classification, assumes that the distribution of points is Gaussian, and
 #evaluates each order of feature separately and just averages them with or without weights
 #Data must be single-dimensional for now, but can be complex
 #Also uses POPULATION VARIANCE, rather than sample variance
@@ -360,69 +483,4 @@ class GaussianClassification(Classifier):
             prbreal = 1
         if np.isnan(prbimag):
             prbimag = 1
-        return prbreal*prbimag
-
-
-class NaiveBayesReal(Classifier):
-    def __init__(self, y, C, zeroth, avg=[], method=None):
-        self.y = y
-        self.C = C
-
-        self.classes = sorted(list(set(self.y)))
-        self.X = [[float(np.real(j[0])) if type(j) is tuple else float(np.real(j)) for j in i] for i in C[0]]
-
-        self.gnb = GaussianNB()
-        self.trained = self.gnb.fit(self.X,self.y)
-
-        #classifications = self.trained.predict(self.X)
-        #probs = self.trained.predict_proba(self.X)
-        #print len(classifications[0]),len(probs[0])
-        #for i in range(len(classifications)):
-        #    print classifications[i],probs[i][self.classes.index(classifications[i])]/sum(probs[i])
-
-    def mostLikely(self, c):
-        x = [[float(np.real(j[0])) if type(j) is tuple else float(np.real(j)) for j in c]]
-        classifications = self.trained.predict(x)
-        probs = self.trained.predict_proba(x)
-        return (classifications[0],probs[0][self.classes.index(classifications[0])]/sum(probs[0]))
-
-    def checkY(self, y, c):
-        x = [[float(np.real(j[0])) if type(j) is tuple else float(np.real(j)) for j in c]]
-        classifications = self.trained.predict(x)
-        probs = self.trained.predict_proba(x)
-        return probs[0][self.classes.index(y)]/sum(probs[0])
-
-    def genData(self):
-        return -1
-
-class NaiveBayesImag(Classifier):
-    def __init__(self, y, C, zeroth, avg=[], method=None):
-        self.y = y
-        self.C = C
-
-        self.classes = sorted(list(set(self.y)))
-        self.X = [[float(np.imag(j[0])) if type(j) is tuple else float(np.imag(j)) for j in i] for i in C[0]]
-
-        self.gnb = GaussianNB()
-        self.trained = self.gnb.fit(self.X,self.y)
-
-        #classifications = self.trained.predict(self.X)
-        #probs = self.trained.predict_proba(self.X)
-        #print len(classifications[0]),len(probs[0])
-        #for i in range(len(classifications)):
-        #    print classifications[i],probs[i][self.classes.index(classifications[i])]/sum(probs[i])
-
-    def mostLikely(self, c):
-        x = [[float(np.imag(j[0])) if type(j) is tuple else float(np.imag(j)) for j in c]]
-        classifications = self.trained.predict(x)
-        probs = self.trained.predict_proba(x)
-        return (classifications[0],probs[0][self.classes.index(classifications[0])]/sum(probs[0]))
-
-    def checkY(self, y, c):
-        x = [[float(np.imag(j[0])) if type(j) is tuple else float(np.imag(j)) for j in c]]
-        classifications = self.trained.predict(x)
-        probs = self.trained.predict_proba(x)
-        return probs[0][self.classes.index(y)]/sum(probs[0])
-
-    def genData(self):
-        return -1
+        return prbreal*prbimag'''
