@@ -30,14 +30,14 @@ class Token:
         #Generate a token string using the data and metadata (different if different y)
         dataString = hashlib.md5(bytearray(str(y)+str(X))).hexdigest()
         methodString = hashlib.md5(bytearray(self.method.name)).hexdigest()
-        baseString = dataString+":"+methodString+":"
+        baseString = dataString+"-"+methodString+"-"
         self.string = baseString+str(order)
 
         #Check if there is an existing token file of the same data and method
-        existingTokens = glob.glob(TOKEN_PATH+"%s:%s:*.csv"%(dataString,methodString))
+        existingTokens = glob.glob(TOKEN_PATH+"%s-%s-*.csv"%(dataString,methodString))
         if len(existingTokens) > 0:
             #If there is, check to see if it is of the same or higher order
-            orders = sorted([int(i.split(':')[-1][:-4]) for i in existingTokens])
+            orders = sorted([int(i.split('-')[-1][:-4]) for i in existingTokens])
             biggestString = baseString+str(orders[-1])
             if orders[-1] >= order:
                 #If it is, load the correct order features from that file
@@ -115,9 +115,9 @@ class Token:
                 for dimension in range(self.dimension):
                     for row in range(self.size):
                         for n in range(orders[-1]+1,order+1):
-                            self.features[dimension][row].append(self.method.getC(n,X[dimension][row]))
+                            self.features[dimension][row].append(self.method.getC(n,X[dimension][row],order))
 
-                newTokenFile = file(TOKEN_PATH+self.string+".csv","w")
+                newTokenFile = file(TOKEN_PATH+self.string+".csv","w+")
 
                 for row in range(self.size):
                     tmp = []
@@ -144,9 +144,9 @@ class Token:
                 for row in range(len(X[dimension])):
                     self.features[dimension].append([])
                     for n in range(order+1):
-                        self.features[dimension][row].append(self.method.getC(n,X[dimension][row]))
+                        self.features[dimension][row].append(self.method.getC(n,X[dimension][row],order))
 
-            tokenFile = file(TOKEN_PATH+self.string+".csv","w")
+            tokenFile = file(TOKEN_PATH+self.string+".csv","w+")
 
             for row in range(len(X[0])):
                 tmp = []
@@ -208,6 +208,28 @@ class Token:
 
         #Return the new Subtoken
         return new_subtoken
+
+    def getVariances(self, imaginary=0, dimension=0, zeroth=1):
+        #int imaginary: if 0, use real part, if 1, use imaginary
+        #int dimension: dimension of the data to use
+        #bool zeroth: if true, use zeroth component
+        #returns a list of the percentage of the total variance accounted for by components generated
+
+        mu = [sum(self.getFeaturesByOrder(n,dimension,imaginary))/self.size for n in range((1-zeroth),self.order+1)]
+        sigmas = [(1.0/(self.size-1))*np.dot([j-mu[zeroth+n-1] for j in self.getFeaturesByOrder(n,dimension,imaginary)],[j-mu[zeroth+n-1] for j in self.getFeaturesByOrder(n,dimension,imaginary)]) for n in range((1-zeroth),self.order+1)]
+        return [i/sum(sigmas) for i in sigmas]
+
+    #Not sure this works at all correctly
+    def getR2(self, row, dimension=0):
+        #int row: row to calculate r-squared value for
+        #int dimension: dimension of the data to use
+        #returns the r-squared score for the given sweep
+
+        data = self.X[dimension][row][:]
+        ybar = sum(data)/len(data)
+        SSres = sum([(data[i]-self.method.evalH(self.features[dimension][row],self.length,i))**2 for i in range(self.length)])
+        SStot = sum([(data[i]-ybar)**2 for i in range(self.length)])
+        return float(np.real(1.0-(SSres/SStot)))
 
     def getFeaturesBySweep(self, row, dimension=0, part=-1, which=0):
         #int row: the index of the set of features to return
@@ -382,7 +404,7 @@ class Model:
         #Load and return the appropriate Token
         return Token(yMat,XMat,self.C,self.O)
 
-    def train(self, data, exclude=[]):
+    def train(self, data, exclude=[], plot=False):
         #Token data: Token of the data to use to train
         #list exclude[]: list of ints corresponding to the 0-indexed rows to ignore when training the model
         #returns Token containing only the excluded data
@@ -396,22 +418,8 @@ class Model:
             the_token = data
             exclusion_token = None
 
-        '''#Calculate the average of the training data to pass to the distribution, if cost is set
-        averages = []
-        if self.cost:
-            classifications = list(set(data.getAllY()))
-            for dimension in range(data.dimension):
-                averages.append([])
-                for classification in classifications:
-                    averages[-1].append([])
-                    for row in range(data.size):
-                        if data.getAllY()[row] == classification:
-                            averages[-1][-1].append(data.getFeaturesBySweep(row,dimension))
-                    tmp = [sum([i[j] for i in averages[-1][-1]])/len(averages[-1][-1]) for j in range(data.length)]
-                    averages[-1][-1] = tmp'''
-
         #Use the data token to instantiate the appropriate distribution
-        self.L = self.classifier(the_token,self.zeroth)#,averages,lambda C,x:self.C.evalH(C,data.length,x))
+        self.L = self.classifier(the_token,self.zeroth,plot)
         self.domain = the_token.length
 
         #Return the exclusion token (might be None)
@@ -437,29 +445,51 @@ class Model:
         #Return the constructed list
         return ret
 
-    def test(self, data, verbose=False):
+    def test(self, data, positive, verbose=False):
         #Token data: Token of data to test, must already contain classifications
+        #string positive: the classification considered a 'positive' identification in the f1 calculation
         #bool verbose: if True, print each individual result
-        #returns an integer, the rate of correct identification using "leave one out" testing
+        #returns a list of floats, the percentage of correct identifications, the precision, the recall, and the F1 score for the given class, using "leave one out" cross validation
 
         if (len(data.getAllY()) != data.size) or (data.getAllY().count("") != 0):
             print "Token must contain classifications"
             raise ValueError
 
-        ret = []
+        tp = 0.0
+        fp = 0.0
+        fn = 0.0
+        ret = 0.0
         #For each set of data in the Token
         for row in range(len(data.getAllY())):
             #Retrain the model without the current row
             thisRow = self.train(data,[row])
+            #temporarily, don't leave one out
+            #self.train(data)
+            #thisRow = data.genSubtoken([row])
 
             #Record the likelihood that the current row belongs to the known classification
             result = self.predict(thisRow,thisRow.getAllY())[0]
             if verbose:
-                print result
-            ret.append(result[1])
+                print row,result
+            if (result[0] == positive) and (result[1] >= 0.5):
+                tp += 1.0
+            elif (result[0] != positive) and (result[1] < 0.5):
+                fp += 1.0
+            elif (result[0] == positive) and (result[1] < 0.5):
+                fn += 1.0
 
-        #Return the average
-        return sum(ret)/len(ret)
+            #Count correct identifications
+            if result[1] >= 0.5:
+                ret += 1.0
+
+        #Calculate precision and recall
+        precision = tp/(tp+fp)
+        recall = tp/(tp+fn)
+
+        print (data.size-tp-fp-fn)/data.size,fp/data.size
+        print fn/data.size,tp/data.size
+
+        return [ret/data.size,precision,recall,2.0/((1.0/precision)+(1.0/recall))]
 
     #Not sure what to do with this until the new classifiers are figured out
     '''def genData(self, classification, n):
@@ -492,10 +522,14 @@ class Model:
         #Plots the approximation with matplotlib if color is not empty
         #Returns an array of the points being plotted
 
-        d = 1.0
-        theCoefficients = data.getAllFeatures()[dimension][row]
+        d = 20.0
+        theCoefficients = data.getAllFeatures()[dimension][row][:]
+        if self.zeroth == 0:
+            theCoefficients[0] = 0.0
 
-        x = [i/d for i in range(int(d*(data.length-1)))]
+        b1 = 0#-int(d*(data.length))
+        b2 = int(d*(data.length-1))
+        x = [i/d for i in range(b1,b2)]
         if imaginary:
             y = [np.imag(self.C.evalH(theCoefficients,data.length,i)) for i in x]
         else:
@@ -504,84 +538,3 @@ class Model:
             plt.plot(x,y,color)
 
         return [float(i) for i in y]
-
-    '''def plotDistributionByOrder(self, n, dimension=0):
-        #int n: the order of coefficient to show the distribution for
-        #int dimension: the data set to pull from
-        #Plots the distribution with matplotlib, but plt.show() still needs to be run to display it
-
-        mC = self.L.getMeanFunc(n,dimension)
-        vC = self.L.getVarianceFunc(n,dimension)
-        if (len(mC) > 0) and (len(vC) > 0):
-            [mC[i]*(x**i) for i in range(len(mC))]
-            mX = []
-            mY = []
-            lX = []
-            lY = []
-            rX = []
-            rY = []
-        else:
-            mC = self.L.getMeanVal(n,dimension)
-            vC = self.L.getVarianceVal(n,dimension)
-
-    def plotDistributionByClassification(self, c, color, domain, imaginary=0, dimension=0):
-        #int c: the classification to show the distribution for
-        #string color: matplotlib color string
-        #int domain: x-axis of plot will encompass 0-domain
-        #bool imaginary: whether the real or imaginary part should be plotted, for complex data
-        #int dimension: the data set to pull from
-        #Plots the distribution with matplotlib, but plt.show() still needs to be run to display it
-
-        if c not in self.L.classifications:
-            print "%s is not a valid classifications..."%c
-            raise ValueError
-
-        d = 1.0
-        theCoefficients = self.L.means[dimension][self.L.classifications.index(c)]
-        theVariances = self.L.variances[dimension][self.L.classifications.index(c)]
-
-        x = [i/d for i in range(int(d*(domain-1)))]
-        if imaginary:
-            y = [np.imag(self.C.evalH(theCoefficients,domain,i)) for i in x]
-        else:
-            y = [np.real(self.C.evalH(theCoefficients,domain,i)) for i in x]
-        plt.plot(x,y,color)
-
-
-        new_color = colors.rgb_to_hsv(colors.hex2color(color))
-        new_color[1] *= 0.5
-
-        theCoefficientsL = [theCoefficients[0]+np.sqrt(np.real(theVariances[0]))+1j*np.sqrt(np.imag(theVariances[0]))]+[(theCoefficients[i][0]+np.sqrt(np.real(theVariances[i][0]))+1j*np.sqrt(np.imag(theVariances[i][0])),theCoefficients[i][1]+np.sqrt(np.real(theVariances[i][1]))+1j*np.sqrt(np.imag(theVariances[i][1]))) for i in range(1,len(theCoefficients))]
-        x = [i/d for i in range(int(d*(domain-1)))]
-        if imaginary:
-            y = [np.imag(self.C.evalH(theCoefficientsL,domain,i)) for i in x]
-        else:
-            y = [np.real(self.C.evalH(theCoefficientsL,domain,i)) for i in x]
-        plt.plot(x,y,color=colors.hsv_to_rgb(new_color))
-
-        theCoefficientsR = [theCoefficients[0]-np.sqrt(np.real(theVariances[0]))-1j*np.sqrt(np.imag(theVariances[0]))]+[(theCoefficients[i][0]-np.sqrt(np.real(theVariances[i][0]))-1j*np.sqrt(np.imag(theVariances[i][0])),theCoefficients[i][1]-np.sqrt(np.real(theVariances[i][1]))-1j*np.sqrt(np.imag(theVariances[i][1]))) for i in range(1,len(theCoefficients))]
-        x = [i/d for i in range(int(d*(domain-1)))]
-        if imaginary:
-            y = [np.imag(self.C.evalH(theCoefficientsR,domain,i)) for i in x]
-        else:
-            y = [np.real(self.C.evalH(theCoefficientsR,domain,i)) for i in x]
-        plt.plot(x,y,color=colors.hsv_to_rgb(new_color))
-
-
-        new_color[1] *= 0.5
-
-        theCoefficientsL = [theCoefficients[0]+2*np.sqrt(np.real(theVariances[0]))+2j*np.sqrt(np.imag(theVariances[0]))]+[(theCoefficients[i][0]+2*np.sqrt(np.real(theVariances[i][0]))+2j*np.sqrt(np.imag(theVariances[i][0])),theCoefficients[i][1]+2*np.sqrt(np.real(theVariances[i][1]))+2j*np.sqrt(np.imag(theVariances[i][1]))) for i in range(1,len(theCoefficients))]
-        x = [i/d for i in range(int(d*(domain-1)))]
-        if imaginary:
-            y = [np.imag(self.C.evalH(theCoefficientsL,domain,i)) for i in x]
-        else:
-            y = [np.real(self.C.evalH(theCoefficientsL,domain,i)) for i in x]
-        plt.plot(x,y,color=colors.hsv_to_rgb(new_color))
-
-        theCoefficientsR = [theCoefficients[0]-2*np.sqrt(np.real(theVariances[0]))-2j*np.sqrt(np.imag(theVariances[0]))]+[(theCoefficients[i][0]-2*np.sqrt(np.real(theVariances[i][0]))-2j*np.sqrt(np.imag(theVariances[i][0])),theCoefficients[i][1]-2*np.sqrt(np.real(theVariances[i][1]))-2j*np.sqrt(np.imag(theVariances[i][1]))) for i in range(1,len(theCoefficients))]
-        x = [i/d for i in range(int(d*(domain-1)))]
-        if imaginary:
-            y = [np.imag(self.C.evalH(theCoefficientsR,domain,i)) for i in x]
-        else:
-            y = [np.real(self.C.evalH(theCoefficientsR,domain,i)) for i in x]
-        plt.plot(x,y,color=colors.hsv_to_rgb(new_color))'''
