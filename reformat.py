@@ -110,7 +110,7 @@ def cancerData(path):
     outpt.close()
 
 def UterusCOXNew(path):
-    outpt = file("uterus_other/BB1.csv","w")
+    outpt = file("kidney_final/KidneyData.csv","w")
 
     current_file = file(path%("cap"),"r")
     Rs = [[float(i) for i in j.split(',')] for j in current_file.readlines()]
@@ -149,5 +149,5 @@ def soundData():
 
 #waterData("water_test_data/NaCl-50/NaCl_50%d%s.csv")
 #cancerData("kidney/Kidney_CC1%s.csv")
-#UterusCOXNew("uterus_other/Uterus_BB1%s.csv")
-soundData()
+UterusCOXNew("kidney_final/Kidney_%s_data_thesis.csv")
+#soundData()

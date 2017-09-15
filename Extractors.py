@@ -5,6 +5,8 @@ from abc import ABCMeta, abstractmethod
 import numpy as np
 from scipy import integrate,polyfit
 from scipy.special import eval_chebyt
+from numpy import polynomial
+from scipy.special import binom
 
 PI = np.pi
 E = np.e
@@ -157,6 +159,45 @@ class Chebyshev(Extractor):
             return 1
         elif x == 0:
             return 0.5
+
+
+#Bernstein approximation
+class Bernstein(Extractor):
+    def __init__(self):
+        self.name = "Bernstein"
+        self.choose = binom
+
+    def getC(self, n, X, order):
+        #First and last term are halved for some reason, but I don't think it matters
+        s = lambda x: sum([((X[j]-X[j-1])*(x-j)+X[j])*self.step(-(x-(j-1))*(x-j)) for j in range(1,len(X))])
+        f = lambda x: s((len(X)-1)*x)/(len(X)-1)
+
+        c = f(float(n)/float(order))#*choose(order,n)
+        return c
+
+    def evalH(self, C, T, x):
+        #Use T to calculate omega
+        #w = (2*PI)/T
+        order = len(C)-1
+        x /= T-1
+
+        #Evaluate the approximation at x
+        return sum([C[v]*self.B(order,v)(x) for v in range(order)])*(T-1)
+
+    #Heaviside step function
+    def step(self, x):
+        if x < 0:
+            return 0
+        elif x > 0:
+            return 1
+        elif x == 0:
+            return 0.5
+
+    def B(self, degree, i):
+        coefficients = [0,]*i + [self.choose(degree, i)]
+        first_term = polynomial.polynomial.Polynomial(coefficients)
+        second_term = polynomial.polynomial.Polynomial([1,-1])**(degree - i)
+        return first_term * second_term
 
 
 #I don't think there's any point to this one

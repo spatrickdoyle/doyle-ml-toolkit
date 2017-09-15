@@ -17,7 +17,7 @@ class Classifier:
     __metaclass__ = ABCMeta
 
     @abstractmethod
-    def __init__(self, data, zeroth, plot=False):
+    def __init__(self, data, zeroth, features=[], plot=False):
         #Token data: Token containing the features and classifications to use
         #bool zeroth: if True, use zeroth coefficient
 
@@ -94,26 +94,29 @@ class Classifier:
         pass
 
 
+#RIGHT NOW THIS USES THE LAST 2 COEFFICIENTS GENERATED TO MAKE THE DECISION
 class NaiveBayesReal(Classifier):
-    def __init__(self, data, zeroth, plot=False):
+    def __init__(self, data, zeroth, features=[], plot=False):
         self.name = "Naive Bayes Real"
         self.zeroth = zeroth
         self.y = data.getAllY()
 
         self.classes = sorted(list(set(self.y)))
-        self.X = [data.getFeaturesBySweep(row,0,0)[(1-self.zeroth):] for row in range(data.size)]
+        self.X = [[data.getFeaturesBySweep(row,0,0)[features[0]],data.getFeaturesBySweep(row,0,0)[features[1]]] for row in range(data.size)]
 
         self.gnb = GaussianNB()
         self.trained = self.gnb.fit(self.X,self.y)
 
+        self.features = features
+
     def mostLikely(self, c):
-        x = [[float(np.real(j)) for j in c[(1-self.zeroth):]]]
+        x = [[float(np.real(j)) for j in [c[self.features[0]],c[self.features[1]]]]]
         classifications = self.trained.predict(x)
         probs = self.trained.predict_proba(x)
         return (classifications[0],probs[0][self.classes.index(classifications[0])])
 
     def checkY(self, y, c):
-        x = [[float(np.real(j)) for j in c[(1-self.zeroth):]]]
+        x = [[float(np.real(j)) for j in [c[self.features[0]],c[self.features[1]]]]]
         classifications = self.trained.predict(x)
         probs = self.trained.predict_proba(x)
         return probs[0][self.classes.index(y)]
@@ -122,25 +125,27 @@ class NaiveBayesReal(Classifier):
         return -1
 
 class NaiveBayesImag(Classifier):
-    def __init__(self, data, zeroth, plot=False):
+    def __init__(self, data, zeroth, features=[], plot=False):
         self.name = "Naive Bayes Imaginary"
         self.zeroth = zeroth
         self.y = data.getAllY()
 
         self.classes = sorted(list(set(self.y)))
-        self.X = [data.getFeaturesBySweep(row,0,1)[(1-self.zeroth):] for row in range(data.size)]
+        self.X = [[data.getFeaturesBySweep(row,0,1)[features[0]],data.getFeaturesBySweep(row,0,1)[features[1]]] for row in range(data.size)]
 
         self.gnb = GaussianNB()
         self.trained = self.gnb.fit(self.X,self.y)
 
+        self.features = features
+
     def mostLikely(self, c):
-        x = [[float(np.imag(j)) for j in c[(1-self.zeroth):]]]
+        x = [[float(np.imag(j)) for j in [c[self.features[0]],c[self.features[1]]]]]
         classifications = self.trained.predict(x)
         probs = self.trained.predict_proba(x)
         return (classifications[0],probs[0][self.classes.index(classifications[0])])
 
     def checkY(self, y, c):
-        x = [[float(np.imag(j)) for j in c[(1-self.zeroth):]]]
+        x = [[float(np.imag(j)) for j in [c[self.features[0]],c[self.features[1]]]]]
         classifications = self.trained.predict(x)
         probs = self.trained.predict_proba(x)
         return probs[0][self.classes.index(y)]
@@ -150,22 +155,24 @@ class NaiveBayesImag(Classifier):
 
 
 class NBKernelReal(Classifier):
-    def __init__(self, data, zeroth, plot=False):
+    def __init__(self, data, zeroth, features=[], plot=False):
         self.name = "Kernel Density Estimation Real"
         self.zeroth = zeroth
         self.y = data.getAllY()
         self.unique = list(set(self.y))
 
         self.classes = sorted(list(set(self.y)))
-        self.X = [data.getFeaturesBySweep(row,0,0)[(1-self.zeroth):] for row in range(data.size)]
+        self.X = [data.getFeaturesBySweep(row,0,0) for row in range(data.size)]
+
+        self.features = features
 
         self.classifiers = []
         for cls in self.unique:
             X = [[],[]]
             for sweep in range(len(self.y)):
                 if self.y[sweep] != cls: continue
-                X[0].append(self.X[sweep][0])
-                X[1].append(self.X[sweep][1])
+                X[0].append(self.X[sweep][features[0]])
+                X[1].append(self.X[sweep][features[1]])
             self.classifiers.append(gaussian_kde(X))
 
             if plot:
@@ -188,9 +195,9 @@ class NBKernelReal(Classifier):
                 plt.show()
 
     def mostLikely(self, c):
-        x = [float(np.real(j)) for j in c[(1-self.zeroth):]]
+        x = [float(np.real(j)) for j in c]
         #classifications = self.nbk.predict(x).tolist()
-        probs = [i.pdf([[x[0]],[x[1]]]).tolist()[0] for i in self.classifiers] #List of probabilities c belongs to each class in self.unique
+        probs = [i.pdf([[x[self.features[0]]],[x[self.features[1]]]]).tolist()[0] for i in self.classifiers] #List of probabilities c belongs to each class in self.unique
         probs = [i if not np.isinf(i) else float(1.797693134e308) for i in probs]
         probs_cpy = probs[:]
         maxx = max(probs)
@@ -198,9 +205,9 @@ class NBKernelReal(Classifier):
         return (self.unique[probs_cpy.index(maxx)],maxx/(maxx+max(probs)))
 
     def checkY(self, y, c):
-        x = [float(np.real(j)) for j in c[(1-self.zeroth):]]
+        x = [float(np.real(j)) for j in c]
         #classifications = self.nbk.predict(x).tolist()
-        probs = [i.pdf([[x[0]],[x[1]]]).tolist()[0] for i in self.classifiers] #List of probabilities c belongs to each class in self.unique
+        probs = [i.pdf([[x[self.features[0]]],[x[self.features[1]]]]).tolist()[0] for i in self.classifiers] #List of probabilities c belongs to each class in self.unique
         probs = [i if not np.isinf(i) else float(1.797693134e308) for i in probs]
         probs_cpy = probs[:]
         maxx = max(probs)
@@ -211,22 +218,24 @@ class NBKernelReal(Classifier):
         return -1
 
 class NBKernelImag(Classifier):
-    def __init__(self, data, zeroth, plot=False):
+    def __init__(self, data, zeroth, features=[], plot=False):
         self.name = "Kernel Density Estimation Imaginary"
         self.zeroth = zeroth
         self.y = data.getAllY()
         self.unique = list(set(self.y))
 
         self.classes = sorted(list(set(self.y)))
-        self.X = [data.getFeaturesBySweep(row,0,1)[(1-self.zeroth):] for row in range(data.size)]
+        self.X = [data.getFeaturesBySweep(row,0,1) for row in range(data.size)]
+
+        self.features = features
 
         self.classifiers = []
         for cls in self.unique:
             X = [[],[]]
             for sweep in range(len(self.y)):
                 if self.y[sweep] != cls: continue
-                X[0].append(self.X[sweep][0])
-                X[1].append(self.X[sweep][1])
+                X[0].append(self.X[sweep][features[0]])
+                X[1].append(self.X[sweep][features[1]])
             self.classifiers.append(gaussian_kde(X))
 
             if plot:
@@ -249,9 +258,9 @@ class NBKernelImag(Classifier):
                 plt.show()
 
     def mostLikely(self, c):
-        x = [float(np.imag(j)) for j in c[(1-self.zeroth):]]
+        x = [float(np.imag(j)) for j in c]
         #classifications = self.nbk.predict(x).tolist()
-        probs = [i.pdf([[x[0]],[x[1]]]).tolist()[0] for i in self.classifiers] #List of probabilities c belongs to each class in self.unique
+        probs = [i.pdf([[x[self.features[0]]],[x[self.features[1]]]]).tolist()[0] for i in self.classifiers] #List of probabilities c belongs to each class in self.unique
         probs = [i if not np.isinf(i) else float(1.797693134e308) for i in probs]
         probs_cpy = probs[:]
         maxx = max(probs)
@@ -259,9 +268,9 @@ class NBKernelImag(Classifier):
         return (self.unique[probs_cpy.index(maxx)],maxx/(maxx+max(probs)))
 
     def checkY(self, y, c):
-        x = [float(np.imag(j)) for j in c[(1-self.zeroth):]]
+        x = [float(np.imag(j)) for j in c]
         #classifications = self.nbk.predict(x).tolist()
-        probs = [i.pdf([[x[0]],[x[1]]]).tolist()[0] for i in self.classifiers] #List of probabilities c belongs to each class in self.unique
+        probs = [i.pdf([[x[self.features[0]]],[x[self.features[1]]]]).tolist()[0] for i in self.classifiers] #List of probabilities c belongs to each class in self.unique
         probs = [i if not np.isinf(i) else float(1.797693134e308) for i in probs]
         probs_cpy = probs[:]
         maxx = max(probs)

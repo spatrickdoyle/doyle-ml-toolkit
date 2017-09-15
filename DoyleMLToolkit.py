@@ -404,7 +404,7 @@ class Model:
         #Load and return the appropriate Token
         return Token(yMat,XMat,self.C,self.O)
 
-    def train(self, data, exclude=[], plot=False):
+    def train(self, data, exclude=[], features=[0,1], plot=False):
         #Token data: Token of the data to use to train
         #list exclude[]: list of ints corresponding to the 0-indexed rows to ignore when training the model
         #returns Token containing only the excluded data
@@ -419,7 +419,7 @@ class Model:
             exclusion_token = None
 
         #Use the data token to instantiate the appropriate distribution
-        self.L = self.classifier(the_token,self.zeroth,plot)
+        self.L = self.classifier(the_token,self.zeroth,features,plot)
         self.domain = the_token.length
 
         #Return the exclusion token (might be None)
@@ -445,7 +445,7 @@ class Model:
         #Return the constructed list
         return ret
 
-    def test(self, data, positive, verbose=False):
+    def test(self, data, positive, features=[0,1], verbose=False):
         #Token data: Token of data to test, must already contain classifications
         #string positive: the classification considered a 'positive' identification in the f1 calculation
         #bool verbose: if True, print each individual result
@@ -462,7 +462,7 @@ class Model:
         #For each set of data in the Token
         for row in range(len(data.getAllY())):
             #Retrain the model without the current row
-            thisRow = self.train(data,[row])
+            thisRow = self.train(data,[row],features)
             #temporarily, don't leave one out
             #self.train(data)
             #thisRow = data.genSubtoken([row])
@@ -482,12 +482,13 @@ class Model:
             if result[1] >= 0.5:
                 ret += 1.0
 
+        #print tp,fp,fn
         #Calculate precision and recall
         precision = tp/(tp+fp)
         recall = tp/(tp+fn)
 
-        print (data.size-tp-fp-fn)/data.size,fp/data.size
-        print fn/data.size,tp/data.size
+        print (data.size-tp-fp-fn),fp
+        print fn,tp
 
         return [ret/data.size,precision,recall,2.0/((1.0/precision)+(1.0/recall))]
 
@@ -510,8 +511,10 @@ class Model:
         theData = data.getAllData()
         if imaginary:
             plt.plot(range(data.length),[np.imag(i) for i in theData[dimension][row]],color)
+            #plt.plot(np.logspace(4,8,data.length),[np.imag(i) for i in theData[dimension][row]],color)
         else:
             plt.plot(range(data.length),[np.real(i) for i in theData[dimension][row]],color)
+            #plt.plot(np.logspace(4,8,data.length),[np.real(i) for i in theData[dimension][row]],color)
 
     def plotApproximation(self, data, row, color='', imaginary=0, dimension=0):
         #Token data: Token storing the approximation to plot
