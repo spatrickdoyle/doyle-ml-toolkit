@@ -4,6 +4,7 @@
 
 import matplotlib.pyplot as plt
 import matplotlib.colors as colors
+import matplotlib.patches as mpatches
 import numpy as np
 import hashlib
 import glob,os
@@ -25,7 +26,10 @@ class Token:
         self.features = []
         self.X = X
         self.y = y
+        self.classifications = list(set(self.y)) #List of unique classifications
         self.method = method
+        self.name = self.method.name
+        self.feats = [] #Used by genVariances
 
         #Generate a token string using the data and metadata (different if different y)
         dataString = hashlib.md5(bytearray(str(y)+str(X))).hexdigest()
@@ -209,27 +213,54 @@ class Token:
         #Return the new Subtoken
         return new_subtoken
 
-    def getVariances(self, imaginary=0, dimension=0, zeroth=1):
+    def genVariances(self, num_feats, imaginary=0, zeroth=1, dimension=0):
+        #int num_feats: number of features to include in the self.feats array
         #int imaginary: if 0, use real part, if 1, use imaginary
-        #int dimension: dimension of the data to use
         #bool zeroth: if true, use zeroth component
+        #int dimension: dimension of the data to use
+        #Generates a list self.feats of the indices of the n most significant features (as complex values)
         #returns a list of the percentage of the total variance accounted for by components generated
 
+        im = imaginary
+
+        imaginary = 0
         mu = [sum(self.getFeaturesByOrder(n,dimension,imaginary))/self.size for n in range((1-zeroth),self.order+1)]
-        sigmas = [(1.0/(self.size-1))*np.dot([j-mu[zeroth+n-1] for j in self.getFeaturesByOrder(n,dimension,imaginary)],[j-mu[zeroth+n-1] for j in self.getFeaturesByOrder(n,dimension,imaginary)]) for n in range((1-zeroth),self.order+1)]
-        return [i/sum(sigmas) for i in sigmas]
+        sigmasr = [(1.0/(self.size-1))*np.dot([j-mu[zeroth+n-1] for j in self.getFeaturesByOrder(n,dimension,imaginary)],[j-mu[zeroth+n-1] for j in self.getFeaturesByOrder(n,dimension,imaginary)]) for n in range((1-zeroth),self.order+1)]
+
+        imaginary = 1
+        mu = [sum(self.getFeaturesByOrder(n,dimension,imaginary))/self.size for n in range((1-zeroth),self.order+1)]
+        sigmasi = [(1.0/(self.size-1))*np.dot([j-mu[zeroth+n-1] for j in self.getFeaturesByOrder(n,dimension,imaginary)],[j-mu[zeroth+n-1] for j in self.getFeaturesByOrder(n,dimension,imaginary)]) for n in range((1-zeroth),self.order+1)]
+
+        percentagesr = np.asarray([i/sum(sigmasr) for i in sigmasr])
+        percentagesi = np.asarray([i/sum(sigmasi) for i in sigmasi])
+
+        self.feats = (np.argsort(-percentagesr)[:num_feats] + 1j*np.argsort(-percentagesi)[:num_feats]).tolist()
+
+        if im == 0:
+            return percentagesr.tolist()
+        elif im == 1:
+            return percentagesi.tolist()
 
     #Not sure this works at all correctly
-    def getR2(self, row, dimension=0):
+    def getR2(self, row, imaginary=0, dimension=0):
         #int row: row to calculate r-squared value for
+        #int imaginary: if 0, use real part, if 1, use imaginary
         #int dimension: dimension of the data to use
         #returns the r-squared score for the given sweep
 
-        data = self.X[dimension][row][:]
-        ybar = sum(data)/len(data)
-        SSres = sum([(data[i]-self.method.evalH(self.features[dimension][row],self.length,i))**2 for i in range(self.length)])
+        if imaginary == 0:
+            data = np.real(self.X[dimension][row]).tolist()
+            ybar = np.mean(data)
+            SSres = sum([(data[i]-np.real(self.method.evalH(self.features[dimension][row],self.length,i,np.real(self.feats).astype(int))))**2 for i in range(self.length)])
+        elif imaginary == 1:
+            data = [np.imag(i) for i in self.X[dimension][row]]
+            ybar = np.mean(data)
+            SSres = sum([(data[i]-np.imag(self.method.evalH(self.features[dimension][row],self.length,i,np.imag(self.feats).astype(int))))**2 for i in range(self.length)])
         SStot = sum([(data[i]-ybar)**2 for i in range(self.length)])
-        return float(np.real(1.0-(SSres/SStot)))
+        print SSres
+        print SStot
+        print SSres/SStot
+        return 1.0-(SSres/SStot)
 
     def getFeaturesBySweep(self, row, dimension=0, part=-1, which=0):
         #int row: the index of the set of features to return
@@ -340,6 +371,8 @@ class Model:
         self.O = order
         self.D = dimension
 
+        self.name = (self.C.name,self.classifier(None,0).name)
+
         self.L = None
 
     def load(self, y, X):
@@ -373,13 +406,17 @@ class Model:
                     #if len(row)-1 == row.count(','):
                     #    continue
                     for value in row.split(','):
-                        if value == "":
+                        if value == "" or value == "\n":
                             dim += 1
                         else:
                             try:
                                 XMat[dim][-1].append(float(value))
                             except ValueError:
-                                XMat[dim][-1].append(complex(value))
+                                value = value.replace("i","j")
+                                if value[0] != '\xef':
+                                    XMat[dim][-1].append(complex(value))
+                                else:
+                                    XMat[dim][-1].append(complex(value[3:]))
 
             #y can be empty for data that is going to be tested. If it is:
             if classFile == -1:
@@ -390,6 +427,8 @@ class Model:
                 for value in classFile.readlines():
                     if (len(value) > 0) and (value != "\n"):
                         #Is it a string?
+                        if value[0] == '\xef':
+                            value = value[3:]
                         if (value[0:3] == '"""') and (value[-4:-1] == '"""'):
                             yMat.append(value[3:-4])
                         else:
@@ -402,11 +441,14 @@ class Model:
             yMat = y
 
         #Load and return the appropriate Token
+        if self.C.name == "PCA":
+            self.C.load(XMat)
         return Token(yMat,XMat,self.C,self.O)
 
-    def train(self, data, exclude=[], features=[0,1], plot=False):
+    def train(self, data, exclude=[], features=False, plot=False):
         #Token data: Token of the data to use to train
         #list exclude[]: list of ints corresponding to the 0-indexed rows to ignore when training the model
+        #bool features: if True, use only the features from self.feats
         #returns Token containing only the excluded data
 
         if len(exclude) > 0:
@@ -419,7 +461,7 @@ class Model:
             exclusion_token = None
 
         #Use the data token to instantiate the appropriate distribution
-        self.L = self.classifier(the_token,self.zeroth,features,plot)
+        self.L = self.classifier(the_token,self.zeroth,data.feats,plot)
         self.domain = the_token.length
 
         #Return the exclusion token (might be None)
@@ -445,20 +487,26 @@ class Model:
         #Return the constructed list
         return ret
 
-    def test(self, data, positive, features=[0,1], verbose=False):
+    def test(self, data, positive, features=[0,1], verbose=False, everything=False):
         #Token data: Token of data to test, must already contain classifications
         #string positive: the classification considered a 'positive' identification in the f1 calculation
         #bool verbose: if True, print each individual result
-        #returns a list of floats, the percentage of correct identifications, the precision, the recall, and the F1 score for the given class, using "leave one out" cross validation
+        #bool everything: if True, instead of summaries, return the result of every individual test
+        #returns a list of floats, the percentage of correct identifications, the precision, the recall, the F1 score for the given class, using "leave one out" cross validation, and a nested list of the true negatives, false positives, false negatives, and true positives
 
         if (len(data.getAllY()) != data.size) or (data.getAllY().count("") != 0):
             print "Token must contain classifications"
             raise ValueError
+        if positive not in data.getAllY():
+            print "Positive value "+positive+" not a valid classification"
+            raise SystemExit
 
-        tp = 0.0
-        fp = 0.0
-        fn = 0.0
+        tp = []
+        fp = []
+        fn = []
+        tn = []
         ret = 0.0
+        results = []
         #For each set of data in the Token
         for row in range(len(data.getAllY())):
             #Retrain the model without the current row
@@ -469,28 +517,42 @@ class Model:
 
             #Record the likelihood that the current row belongs to the known classification
             result = self.predict(thisRow,thisRow.getAllY())[0]
+            results.append(result[1])
             if verbose:
                 print row,result
             if (result[0] == positive) and (result[1] >= 0.5):
-                tp += 1.0
+                tp.append(row)
             elif (result[0] != positive) and (result[1] < 0.5):
-                fp += 1.0
+                fp.append(row)
             elif (result[0] == positive) and (result[1] < 0.5):
-                fn += 1.0
+                fn.append(row)
+            else:
+                tn.append(row)
 
             #Count correct identifications
             if result[1] >= 0.5:
                 ret += 1.0
 
-        #print tp,fp,fn
         #Calculate precision and recall
-        precision = tp/(tp+fp)
-        recall = tp/(tp+fn)
+        try:
+            precision = float(len(tp))/(len(tp)+len(fp))
+        except ZeroDivisionError:
+            precision = -1
+        try:
+            recall = float(len(tp))/(len(tp)+len(fn))
+        except ZeroDivisionError:
+            recall = -1
 
-        print (data.size-tp-fp-fn),fp
-        print fn,tp
+        print len(tn),len(fp)
+        print len(fn),len(tp)
 
-        return [ret/data.size,precision,recall,2.0/((1.0/precision)+(1.0/recall))]
+        if everything == False:
+            if precision == 0 or recall == 0:
+                return [ret/data.size,precision,recall,-1,[tn,fp,fn,tp]]
+            else:
+                return [ret/data.size,precision,recall,2.0/((1.0/precision)+(1.0/recall)),[tn,fp,fn,tp]]
+        else:
+            return results
 
     #Not sure what to do with this until the new classifiers are figured out
     '''def genData(self, classification, n):
@@ -509,14 +571,13 @@ class Model:
         #Plots the data with matplotlib, but plt.show() still needs to be run to display it
 
         theData = data.getAllData()
+        X = np.logspace(4,8,data.length) # range(data.length)
         if imaginary:
-            plt.plot(range(data.length),[np.imag(i) for i in theData[dimension][row]],color)
-            #plt.plot(np.logspace(4,8,data.length),[np.imag(i) for i in theData[dimension][row]],color)
+            plt.plot(X,[np.imag(i) for i in theData[dimension][row]],color)
         else:
-            plt.plot(range(data.length),[np.real(i) for i in theData[dimension][row]],color)
-            #plt.plot(np.logspace(4,8,data.length),[np.real(i) for i in theData[dimension][row]],color)
+            plt.plot(X,[np.real(i) for i in theData[dimension][row]],color)
 
-    def plotApproximation(self, data, row, color='', imaginary=0, dimension=0):
+    def plotApproximation(self, data, row, color='', imaginary=0, dimension=0, feats=[]):
         #Token data: Token storing the approximation to plot
         #int row: the data set to plot
         #string color: matplotlib color string, can be hex or just, like, 'red'
@@ -525,19 +586,53 @@ class Model:
         #Plots the approximation with matplotlib if color is not empty
         #Returns an array of the points being plotted
 
-        d = 20.0
+        d = 5.0#20.0
         theCoefficients = data.getAllFeatures()[dimension][row][:]
-        if self.zeroth == 0:
-            theCoefficients[0] = 0.0
+        first = theCoefficients[0]
+        #if self.zeroth == 0:
+        #    theCoefficients[0] = 0.0
 
         b1 = 0#-int(d*(data.length))
         b2 = int(d*(data.length-1))
         x = [i/d for i in range(b1,b2)]
         if imaginary:
-            y = [np.imag(self.C.evalH(theCoefficients,data.length,i)) for i in x]
+            y = [np.imag(self.C.evalH(theCoefficients,data.length,i,feats)) for i in x]
         else:
-            y = [np.real(self.C.evalH(theCoefficients,data.length,i)) for i in x]
+            y = [np.real(self.C.evalH(theCoefficients,data.length,i,feats)) for i in x]
+        x = np.logspace(4,8,len(y))
         if len(color) > 0:
             plt.plot(x,y,color)
 
-        return [float(i) for i in y]
+        return [first]+[float(i) for i in y[1::int(d)]]
+
+    def plotSamples(self, data, imaginary=0):
+        #Token data: Token storing the data to plot
+        #bool imaginary: 0 is plot real part, 1 plot imaginary part
+
+        #Define the tags for the legend
+        colors = ['red','cyan','green','purple','blue','orange']
+        tags = [mpatches.Patch(color=colors[i], label=data.classifications[i]) for i in range(len(data.classifications))]
+
+        plt.legend(handles=tags)
+        for i in range(len(data.getAllY())):
+                self.plotSample(data,i,colors[data.classifications.index(data.getAllY()[i])],imaginary)
+
+    def plotApproximations(self, data, imaginary=0, feats=False):
+        #Token data: Token storing the approximation to plot
+        #bool imaginary: 0 is plot real part, 1 plot imaginary part
+
+        #Define the tags for the legend
+        colors = ['red','cyan','green','purple','blue','orange']
+        tags = [mpatches.Patch(color=colors[i], label=data.classifications[i]) for i in range(len(data.classifications))]
+
+        if feats:
+            if imaginary == 0:
+                feat = np.real(data.feats).astype(int)
+            elif imaginary == 1:
+                feat = np.imag(data.feats).astype(int)
+        else:
+            feat = []
+
+        plt.legend(handles=tags)
+        for i in range(len(data.getAllY())):
+                self.plotApproximation(data,i,colors[data.classifications.index(data.getAllY()[i])],imaginary,0,feat)

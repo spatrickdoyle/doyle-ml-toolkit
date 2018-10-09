@@ -5,6 +5,7 @@ from DoyleMLToolkit import Subtoken
 import matplotlib.pyplot as plt
 
 from sklearn.naive_bayes import GaussianNB
+from sklearn.neighbors import KNeighborsClassifier
 
 from abc import ABCMeta, abstractmethod
 import numpy as np
@@ -94,20 +95,20 @@ class Classifier:
         pass
 
 
-#RIGHT NOW THIS USES THE LAST 2 COEFFICIENTS GENERATED TO MAKE THE DECISION
 class NaiveBayesReal(Classifier):
     def __init__(self, data, zeroth, features=[], plot=False):
         self.name = "Naive Bayes Real"
+        if data == None: return
         self.zeroth = zeroth
         self.y = data.getAllY()
 
+        self.features = np.real(features).astype(int)
+
         self.classes = sorted(list(set(self.y)))
-        self.X = [[data.getFeaturesBySweep(row,0,0)[features[0]],data.getFeaturesBySweep(row,0,0)[features[1]]] for row in range(data.size)]
+        self.X = [[data.getFeaturesBySweep(row,0,0)[self.features[0]],data.getFeaturesBySweep(row,0,0)[self.features[1]]] for row in range(data.size)]
 
         self.gnb = GaussianNB()
         self.trained = self.gnb.fit(self.X,self.y)
-
-        self.features = features
 
     def mostLikely(self, c):
         x = [[float(np.real(j)) for j in [c[self.features[0]],c[self.features[1]]]]]
@@ -127,16 +128,17 @@ class NaiveBayesReal(Classifier):
 class NaiveBayesImag(Classifier):
     def __init__(self, data, zeroth, features=[], plot=False):
         self.name = "Naive Bayes Imaginary"
+        if data == None: return
         self.zeroth = zeroth
         self.y = data.getAllY()
 
+        self.features = np.imag(features).astype(int)
+
         self.classes = sorted(list(set(self.y)))
-        self.X = [[data.getFeaturesBySweep(row,0,1)[features[0]],data.getFeaturesBySweep(row,0,1)[features[1]]] for row in range(data.size)]
+        self.X = [[data.getFeaturesBySweep(row,0,1)[self.features[0]],data.getFeaturesBySweep(row,0,1)[self.features[1]]] for row in range(data.size)]
 
         self.gnb = GaussianNB()
         self.trained = self.gnb.fit(self.X,self.y)
-
-        self.features = features
 
     def mostLikely(self, c):
         x = [[float(np.imag(j)) for j in [c[self.features[0]],c[self.features[1]]]]]
@@ -157,6 +159,7 @@ class NaiveBayesImag(Classifier):
 class NBKernelReal(Classifier):
     def __init__(self, data, zeroth, features=[], plot=False):
         self.name = "Kernel Density Estimation Real"
+        if data == None: return
         self.zeroth = zeroth
         self.y = data.getAllY()
         self.unique = list(set(self.y))
@@ -164,15 +167,15 @@ class NBKernelReal(Classifier):
         self.classes = sorted(list(set(self.y)))
         self.X = [data.getFeaturesBySweep(row,0,0) for row in range(data.size)]
 
-        self.features = features
+        self.features = np.real(features).astype(int)
 
         self.classifiers = []
         for cls in self.unique:
             X = [[],[]]
             for sweep in range(len(self.y)):
                 if self.y[sweep] != cls: continue
-                X[0].append(self.X[sweep][features[0]])
-                X[1].append(self.X[sweep][features[1]])
+                X[0].append(self.X[sweep][self.features[0]])
+                X[1].append(self.X[sweep][self.features[1]])
             self.classifiers.append(gaussian_kde(X))
 
             if plot:
@@ -202,7 +205,10 @@ class NBKernelReal(Classifier):
         probs_cpy = probs[:]
         maxx = max(probs)
         probs.remove(maxx)
-        return (self.unique[probs_cpy.index(maxx)],maxx/(maxx+max(probs)))
+        if maxx == 0:
+            return (0.0,0.0)
+        else:
+            return (self.unique[probs_cpy.index(maxx)],maxx/(maxx+max(probs)))
 
     def checkY(self, y, c):
         x = [float(np.real(j)) for j in c]
@@ -220,6 +226,7 @@ class NBKernelReal(Classifier):
 class NBKernelImag(Classifier):
     def __init__(self, data, zeroth, features=[], plot=False):
         self.name = "Kernel Density Estimation Imaginary"
+        if data == None: return
         self.zeroth = zeroth
         self.y = data.getAllY()
         self.unique = list(set(self.y))
@@ -227,15 +234,15 @@ class NBKernelImag(Classifier):
         self.classes = sorted(list(set(self.y)))
         self.X = [data.getFeaturesBySweep(row,0,1) for row in range(data.size)]
 
-        self.features = features
+        self.features = np.imag(features).astype(int)
 
         self.classifiers = []
         for cls in self.unique:
             X = [[],[]]
             for sweep in range(len(self.y)):
                 if self.y[sweep] != cls: continue
-                X[0].append(self.X[sweep][features[0]])
-                X[1].append(self.X[sweep][features[1]])
+                X[0].append(self.X[sweep][self.features[0]])
+                X[1].append(self.X[sweep][self.features[1]])
             self.classifiers.append(gaussian_kde(X))
 
             if plot:
@@ -279,3 +286,36 @@ class NBKernelImag(Classifier):
 
     def genData(self):
         return -1
+
+
+class KNearestNeighbors(Classifier):
+    def __init__(self, data, zeroth, features=[], plot=False):
+        self.name = "K Nearest Neighbors"
+        if data == None: return
+        self.zeroth = zeroth
+        self.y = data.getAllY()
+
+        self.features = np.real(features).astype(int)
+
+        self.classes = sorted(list(set(self.y)))
+        self.X = [[data.getFeaturesBySweep(row,0)[self.features[0]],data.getFeaturesBySweep(row,0)[self.features[1]]] for row in range(data.size)]
+
+        self.neigh = KNeighborsClassifier(n_neighbors=3)
+        self.trained = self.neigh.fit(self.X,self.y)
+
+    def mostLikely(self, c):
+        x = [[j for j in [c[self.features[0]],c[self.features[1]]]]]
+        classifications = self.trained.predict(x)
+        probs = self.trained.predict_proba(x)
+        return (classifications[0],probs[0][self.classes.index(classifications[0])])
+
+    def checkY(self, y, c):
+        x = [[j for j in [c[self.features[0]],c[self.features[1]]]]]
+        classifications = self.trained.predict(x)
+        probs = self.trained.predict_proba(x)
+        return probs[0][self.classes.index(y)]
+
+    def genData(self):
+        return -1
+
+All = [NaiveBayesReal,NaiveBayesImag,NBKernelReal,NBKernelImag,KNearestNeighbors]
